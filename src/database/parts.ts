@@ -13,14 +13,14 @@ export class DbPart {
 
   constructor(data: Partial<DbPart>) {
     this.name = data.name ?? '';
-    this.start = data.start ?? 0;
+    this.start = data.start ?? undefined;
     this.end = data.end ?? 0;
     this.type = data.type ?? '';
     this.bank = data.bank ?? undefined;
     this.order = data.order ?? undefined;
 
     if(!this.name) throw new Error('Name is required');
-    if(!this.start) throw new Error('Start is required');
+    if(this.start === undefined) throw new Error('Start is required');
     if(!this.end) throw new Error('End is required');
     if(!this.type) throw new Error('Struct is required');
   }

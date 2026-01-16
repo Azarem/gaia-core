@@ -7,7 +7,7 @@ import { DbFile, DbFileType } from './files';
 import { DbOverride } from './overrides';
 import { DbStruct } from './structs';
 import { DbAddressingMode } from './addressingMode';
-import { DbStringType, DbStringCommand, DbStringLayer } from './strings';
+import { DbStringType, DbStringCommand, DbStringLayer, DbStringDictionary } from './strings';
 import { CopDef } from './cop';
 import { listDirectory, readFileAsBinary, readJsonFile, saveFileAsText, saveFileAsBinary, readFileAsText } from '../utils';
 import type { DbMnemonic } from './mnemonics';
@@ -45,7 +45,7 @@ export interface DbRoot {
   files: DbFile[];
   config: DbConfig;
   blocks: DbBlock[];
-  overrides: Record<number, Record<string, number>>;
+  overrides: Record<number, Record<string, any>>;
   labels: Record<number, string>;
   rewrites: Record<number, number>;
   entryPoints: DbEntryPoint[];
@@ -91,7 +91,7 @@ export class DbRootUtils {
   public static async gameModuleFromFolder(folderPath: string, systemPath: string): Promise<DbGameRomModule> {
     return {
       mnemonics: await readJsonFile<Record<number, string>>(`${folderPath}/mnemonics.json`),
-      overrides: await readJsonFile<Record<number, Record<string, number>>>(`${folderPath}/overrides.json`),
+      overrides: await readJsonFile<Record<number, Record<string, any>>>(`${folderPath}/overrides.json`),
       rewrites: await readJsonFile<Record<string, number>>(`${folderPath}/rewrites.json`),
       blocks: await readJsonFile<Record<string, Record<string, Partial<DbBlock>>>>(`${folderPath}/blocks.json`),
       files: await readJsonFile<Record<string, Record<string, Record<string, Partial<DbFile>>>>>(`${folderPath}/files.json`),
@@ -184,7 +184,11 @@ export class DbRootUtils {
         acc[y[0]] = new DbStringCommand({...y[1], name: y[0]});
         return acc;
       }, {} as Record<string, DbStringCommand>);
-      acc[name] = new DbStringType({...stringType, name, commands});
+      const dictionaries = Object.entries(stringType.dictionaries ?? {}).reduce((acc, y) => {
+        acc[y[0]] = new DbStringDictionary({...y[1], name: y[0]});
+        return acc;
+      }, {} as Record<string, DbStringDictionary>);
+      acc[name] = new DbStringType({...stringType, name, commands, dictionaries});
       return acc;
     }, {} as Record<string, DbStringType>);
 
@@ -228,7 +232,12 @@ export class DbRootUtils {
         return acc;
       }, {} as Record<number, string>),
       structs: structLookup,
-      blocks: blocksArray.sort((a, b) => a.parts[0].start - b.parts[0].start),
+      blocks: blocksArray.sort((a, b) => {
+        const orderA = a.order ?? 0;
+        const orderB = b.order ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.parts[0].start - b.parts[0].start;
+      }),
       files: fileList,
       fileTypes,
       fileExtLookup: extLookup,

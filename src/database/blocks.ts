@@ -13,6 +13,7 @@ export class DbBlock {
   public parts: DbPart[];
   public transforms?: DbTransform[];
   public postProcess?: string;
+  public order?: number;
   //public id?: string;
 
   constructor(data: Partial<DbBlock>) {
@@ -30,6 +31,7 @@ export class DbBlock {
     });
     this.transforms = data.transforms ?? [];
     this.postProcess = data.postProcess ?? undefined;
+    this.order = data.order ?? undefined;
     //this.id = data.id ?? undefined;
 
 

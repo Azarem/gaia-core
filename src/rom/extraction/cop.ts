@@ -115,8 +115,10 @@ export class CopCommandProcessor {
       return new Word(offset);
     }
 
-    const addr = new Address(bank ?? (this._romDataReader.position >> 16), offset);
-    if (addr.space === AddressSpace.ROM) {
+    const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
+
+    const addr = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+    if (addr.isROM) {
       const location = addr.toInt();
       if (partStr !== 'Address' && isPtr && !this._blockReader._root.rewrites[location]) {
         this._blockReader.noteType(location, otherStr, true);

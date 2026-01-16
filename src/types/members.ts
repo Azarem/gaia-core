@@ -8,5 +8,6 @@ export enum MemberType {
   Offset = 'Offset',
   Address = 'Address',
   Binary = 'Binary',
-  Code = 'Code'
+  Code = 'Code',
+  Location = 'Location'
 } 

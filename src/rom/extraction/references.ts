@@ -63,6 +63,8 @@ export class ReferenceManager {
 
   // Label creation
   public createBranchLabel(location: number): string {
+    // const adrs = Address.fromInt(location, this.root.config.memoryMode);
+    // const name = `loc_${adrs.toString()}`;
     const name = `loc_${location.toString(16).toUpperCase().padStart(6, '0')}`;
     this.nameTable.set(location, name);
     return name;
@@ -76,6 +78,8 @@ export class ReferenceManager {
       name = name.substring(1) + '_list';
     }
 
+    //const adrs = Address.fromInt(location, this.root.config.memoryMode);
+    //return `${name}_${adrs.toString()}`;
     return `${name}_${location.toString(16).toUpperCase().padStart(6, '0')}`;
   }
 
@@ -89,6 +93,8 @@ export class ReferenceManager {
       return fileMatch.name + (offset !== 0 ? `+${offset.toString(16).toUpperCase()}` : '');
     }
 
+    // const adrs = Address.fromInt(location, this.root.config.memoryMode);
+    // return adrs.toString(); 
     return location.toString(16).toUpperCase().padStart(6, '0');
   }
 

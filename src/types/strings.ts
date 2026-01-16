@@ -18,6 +18,7 @@ export interface StringWrapper {
   type: DbStringType;
   marker: number;
   location: number;
+  fixedSize: number;
 }
 
 /**

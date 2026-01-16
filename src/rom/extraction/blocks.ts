@@ -15,7 +15,6 @@ import {
   BlockReaderConstants,
   RomProcessingConstants,
   TableEntry,
-  createTableEntry,
   BinType,
   AsmBlock,
   createChunkFileFromDbFile,
@@ -96,6 +95,12 @@ export class BlockReader {
           case 'B':
             this._stateManager.get('dataBank').set(parseInt(location), value);
             break;
+          case 'type':
+            this._referenceManager.tryAddStruct(parseInt(location), value);
+            break;
+          case 'name':
+            this._referenceManager.tryAddName(parseInt(location), value);
+            break;
         }
       }
     }
@@ -155,6 +160,8 @@ export class BlockReader {
     if (outside && foundBlock && foundPart) {
       this._currentAsmBlock!.includes!.add({block: foundBlock, part: foundPart});
     } else if (isBranch && !this._referenceManager.tryGetName(loc).found) {
+      // const adrs = Address.fromInt(loc, this._root.config.memoryMode);
+      // const name = `loc_${adrs.toString()}`;
       const name = `loc_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
       this._referenceManager.tryAddName(loc, name);
     }
@@ -277,7 +284,7 @@ export class BlockReader {
 
     let current = part.structName || BlockReaderConstants.BINARY_TYPE;
     const chunks: TableEntry[] = [];
-    const reg = new Registers(); //platform.createRegisters()
+    const reg = new Registers(this._root.config.memoryMode); //platform.createRegisters()
     const bank = part.bank;
     let last: TableEntry | null = null;
 
@@ -285,12 +292,16 @@ export class BlockReader {
       const structResult = this._referenceManager.tryGetStruct(this._romDataReader.position);
       if (structResult.found) {
         current = structResult.chunkType!;
-      } else if (last !== null) {
+      } else if (last !== null && !this._root.stringTypes[current]) {
         this.processContinuousEntry(current, reg, bank, last);
         continue;
       }
 
-      last = createTableEntry(this._romDataReader.position);
+      if(!this._referenceManager.nameTable.has(this._romDataReader.position)) {
+        const name = this._referenceManager.createTypeName(current, this._romDataReader.position);
+        this._referenceManager.nameTable.set(this._romDataReader.position, name);
+      }
+      last = new TableEntry(this._romDataReader.position);
       chunks.push(last);
       this.processNewEntry(current, reg, bank, last);
     }

@@ -1,5 +1,6 @@
 import { StatusFlags } from '../types';
 import { Stack } from './Stack';
+import { MemoryMapMode } from '../types';
 
 /**
  * Manages the 65816 processor registers and status flags
@@ -14,10 +15,12 @@ export class Registers {
   // public yIndex?: number;
   public value: Record<string, number>;
   public stack: Stack;
+  public mode: MemoryMapMode;
 
-  constructor() {
+  constructor(mode: MemoryMapMode) {
     this.value = {};
     this.stack = new Stack();
+    this.mode = mode;
   }
 
   /**

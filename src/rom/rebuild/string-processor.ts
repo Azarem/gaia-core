@@ -1,4 +1,4 @@
-import { DbRoot, DbStringCommand, DbStringType } from '../../database';
+import { DbRoot, DbStringCommand, DbStringType, DbStringTypeUtils } from '../../database';
 import { MemberType, StringMarker } from '../../types';
 import type { AssemblerContext } from './assembler-context';
 
@@ -7,7 +7,9 @@ import type { AssemblerContext } from './assembler-context';
  * Converted from GaiaLib/Rom/Rebuild/StringProcessor.cs
  */
 export class StringProcessor {
-  private readonly memBuffer: number[] = [];
+  private memBuffer: number[] = [];
+  private totalSize: number = 0;
+  private fixedStr: number = 0;
   private readonly context: AssemblerContext;
   private readonly root: DbRoot;
   private readonly stringCharLookup: Record<string, DbStringType>;
@@ -23,6 +25,7 @@ export class StringProcessor {
 
   public consumeString(typeChar: string): void {
     let str: string | null = null;
+    let fixedStr: number = 0;
 
     // Get character code of string type
     //const typeChar = this.context.lineBuffer[0];
@@ -35,6 +38,14 @@ export class StringProcessor {
       // Line takes content after and code
       this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1)
         .replace(/^[\s,\t]+/, '');
+      if(this.context.lineBuffer.startsWith('(')) {
+        const endIx = this.context.lineBuffer.indexOf(')');
+        if(endIx >= 0) {
+          fixedStr = parseInt(this.context.lineBuffer.substring(1, endIx), 10);
+          this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1)
+            .replace(/^[\s,\t]+/, '');
+        }
+      }
     } else {
       // Take the remaining line
       str = this.context.lineBuffer.substring(1);
@@ -43,6 +54,8 @@ export class StringProcessor {
 
     // Reset memory buffer for new string
     this.memBuffer.length = 0;
+    this.totalSize = 0;
+    this.fixedStr = fixedStr;
 
     const stringType = this.stringCharLookup[typeChar];
     this.processString(str, stringType);
@@ -51,17 +64,26 @@ export class StringProcessor {
   private flushBuffer(stringType: DbStringType, wrap: boolean = false): void {
     const size = this.memBuffer.length;
     if (size > 0) {
-      const buffer = new Uint8Array(this.memBuffer);
-      this.context.currentBlock!.objList.push(buffer);
-      this.context.currentBlock!.size += size;
+      const newSize = this.totalSize + size;
+      if(this.fixedStr && newSize > this.fixedStr) {
+        const buffer = new Uint8Array(this.memBuffer.slice(0, this.fixedStr - this.totalSize));
+        this.context.currentBlock!.objList.push(buffer);
+        this.context.currentBlock!.size += buffer.length;
+        this.totalSize = this.fixedStr;
+      } else {
+        const buffer = new Uint8Array(this.memBuffer);
+        this.context.currentBlock!.objList.push(buffer);
+        this.context.currentBlock!.size += size;
+        this.totalSize += size;
+      }
       this.memBuffer.length = 0;
     }
   }
 
   private processString(str: string, stringType: DbStringType): void {
     const dict = stringType.commands;
-    const charMap = stringType.characterMap;
-    const shift = this.getShiftUp(stringType.shiftType);
+    //const charMap = stringType.characterMap;
+    //const shift = this.getShiftUp(stringType.shiftType);
     let lastCmd: DbStringCommand | null = null;
 
     for (let x = 0; x < str.length; x++) {
@@ -101,8 +123,10 @@ export class StringProcessor {
       }
     }
 
-    // Terminate string
-    if (lastCmd === null || !lastCmd.halt) {
+    if(this.fixedStr) {
+      let count = this.fixedStr - this.totalSize;
+      while(count--) this.memBuffer.push(stringType.terminator);
+    } else if (lastCmd === null || !lastCmd.halt) {
       this.memBuffer.push(stringType.terminator);
     }
 
@@ -110,7 +134,7 @@ export class StringProcessor {
   }
 
   private applyLayers(c: string, stringType: DbStringType): boolean {
-    if (this.applyMap(c, stringType.characterMap, this.getShiftUp(stringType.shiftType))) {
+    if (this.applyMap(c, stringType.characterMap, DbStringTypeUtils.getShiftUp(stringType.shiftType))) {
       return true;
     }
 
@@ -176,17 +200,6 @@ export class StringProcessor {
 
     if (hasPointer) {
       this.flushBuffer(stringType, false);
-    }
-  }
-
-  private getShiftUp(shiftType?: string): (x: number) => number {
-    switch (shiftType) {
-      case 'h2':
-        return (x: number) => (((x & 0x70) << 1) | (x & 0x0F));
-      case 'wh2':
-        return (x: number) => (((x & 0x38) << 1) | (x & 0x07));
-      default:
-        return (x: number) => x;
     }
   }
 }

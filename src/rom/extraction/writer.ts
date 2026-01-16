@@ -203,9 +203,7 @@ export class BlockWriter {
 
       if (addr.isCodeBank && addr.offset < Address.UPPER_BANK) {
         const label = this._root.mnemonics[addr.offset];
-        if (label) {
-          return label;
-        }
+        if (label) return label;
       }
 
       return addr.offset;
@@ -370,6 +368,8 @@ export class BlockWriter {
 
     for (const t of tGroup) {
       const nameResult = this._referenceManager.tryGetName(t.location);
+      //const adrs = Address.fromInt(t.location, this._blockReader._root.config.memoryMode);
+      //const name = nameResult.found ? nameResult.referenceName! : `loc_${adrs.toString()}`;
       const name = nameResult.found ? nameResult.referenceName! : `loc_${t.location.toString(16).toUpperCase().padStart(6, '0')}`;
       
       const objectLines = this.writeObject(t.object, depth + 1);
@@ -487,15 +487,15 @@ export class BlockWriter {
       while (ix >= 0) {
         const hexStr = str.substring(ix + 1, ix + 7);
         const rawAddr = parseInt(hexStr, 16);
-        const adrs = new Address((rawAddr >> 16) & 0xFF, rawAddr & 0xFFFF);
+        const adrs = new Address((rawAddr >> 16) & 0xFF, rawAddr & 0xFFFF, this._blockReader._root.config.memoryMode);
         
-        if (adrs.space === AddressSpace.ROM) {
+        if (adrs.isROM) {
           const addressType = char === '^' ? AddressType.Offset : AddressType.Address;
           const location = adrs.toInt();
           const name = this._blockReader.resolveName(location, addressType, false);
           str = str.replace(str.substring(ix, ix + 7), name);
         } else {
-          throw new Error('Unsupported address space');
+          //throw new Error('Unsupported address space');
         }
         
         ix = str.indexOf(char, ix + 7);
@@ -531,6 +531,7 @@ export class BlockWriter {
                   mix += 2;
                   break;
                 case MemberType.Address:
+                case MemberType.Location:
                   mix += 3;
                   break;
                 case MemberType.Binary:
@@ -552,7 +553,9 @@ export class BlockWriter {
       str = str.substring(0, six) + '[::]' + str.substring(six);
     }
 
-    return [`${refChar}${str}${refChar}`];
+    const sizeParam = stringObj.fixedSize ? `(${stringObj.fixedSize})` : '';
+
+    return [`${refChar}${str}${refChar}${sizeParam}`];
   }
 
   private writeArray(arr: any[], depth: number): string[] {

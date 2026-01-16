@@ -41,6 +41,7 @@ export class TypeParser {
 
   public parseType(typeName: string, reg: Registers | null, depth: number, bank?: number): unknown {
     
+
     // Shortcut for symbolic Offsets
     if (typeName[0] === '&') {
       return this.parseLocation(this._romDataReader.readUShort(), bank, typeName.substring(1), AddressType.Offset);
@@ -50,11 +51,27 @@ export class TypeParser {
     if (typeName[0] === '@') {
       return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), typeName.substring(1), AddressType.Address);
     }
+    
+    // Shortcut for symbolic Locations
+    if (typeName[0] === '%') {
+      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), typeName.substring(1), AddressType.Location);
+    }
+    
+    const isFixed = typeName[typeName.length - 1] === ')';
+    let fixedTypeName = typeName;
+    let fixedSize = 0;
+
+    if(isFixed) {
+      const startIx = typeName.indexOf('(');
+      fixedTypeName = typeName.substring(0, startIx);
+      fixedSize = parseInt(typeName.substring(startIx + 1, typeName.length - 1), 10);
+    }
+
 
     // Check string types
-    const stringType = this._stringTypes[typeName];
+    const stringType = this._stringTypes[fixedTypeName];
     if (stringType) {
-      return this._stringReader.parseString(stringType);
+      return this._stringReader.parseString(stringType, fixedSize);
     }
 
     // Parse raw values
@@ -69,6 +86,8 @@ export class TypeParser {
           return this.parseLocation(this._romDataReader.readUShort(), bank, null, AddressType.Offset);
         case MemberType.Address:
           return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Address);
+        case MemberType.Location:
+          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Location);
         case MemberType.Binary:
           return this.parseBinary();
         case MemberType.Code:
@@ -203,34 +222,42 @@ export class TypeParser {
       return new Word(offset);
     }
 
-    // Bank cannot be null, instead use bank from current position
-    const resolvedBank = bank ?? (this._romDataReader.position >> 16);
-
-    // Create the address with resolved bank
-    const adrs = new Address(resolvedBank, offset);
-
-    // If we have a system address, keep it as is
-    if (adrs.space !== AddressSpace.ROM) {
-      return adrs;
+    let adrs: Address;
+    let loc: number;
+    if(addrType === AddressType.Location) {
+      loc = offset | (bank << 16);
+      //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
+    } else {
+      // Bank cannot be null, instead use bank from current position
+      const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
+  
+      // Create the address with resolved bank
+      adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+  
+      // If we have a system address, keep it as is
+      if (!adrs.isROM) return adrs;
+  
+      // Convert address to ROM location
+      loc = adrs.toInt();
     }
 
-    // Convert address to ROM location
-    const loc = adrs.toInt();
 
     // If the location is inside the current block and there is no rewrite for it...
     if (
-      this._blockReader._currentChunk &&
-      ChunkFileUtils.isInside(this._blockReader._currentChunk, loc) &&
+      //this._blockReader._currentChunk &&
+      //ChunkFileUtils.isInside(this._blockReader._currentChunk, loc) &&
+      typeName &&
       !this._blockReader._root.rewrites[loc]
     ) {
       // Normalize the type name to default to current part definition
-      const resolvedTypeName = typeName ?? this._blockReader._currentAsmBlock!.structName ?? 'Binary';
+      //const resolvedTypeName = typeName ?? this._blockReader._currentAsmBlock!.structName ?? 'Binary';
 
       // Add the struct type to our chunk table if it is not already present
-      this._referenceManager.tryAddStruct(loc, resolvedTypeName);
+      this._referenceManager.tryAddStruct(loc, typeName);
 
       // If the location is not already in the reference table, add it
-      const referenceName = `${resolvedTypeName.toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
+      //const referenceName = `${resolvedTypeName.toLowerCase()}_${adrs.toString()}`;
+      const referenceName = `${typeName.toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
       this._referenceManager.tryAddName(loc, referenceName);
     }
 

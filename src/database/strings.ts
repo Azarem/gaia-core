@@ -32,6 +32,30 @@ export interface DbStringLayer {
   map: string[];
 }
 
+export class DbStringDictionary {
+  public base: number;
+  public range: number;
+  public command: number;
+  public name: string;
+  public suffix: string;
+  public entries: string[];
+
+  constructor(data: Partial<DbStringDictionary>) {
+    this.base = data.base ?? undefined;
+    this.range = data.range ?? 0;
+    this.command = data.command ?? undefined;
+    this.name = data.name ?? '';
+    this.entries = data.entries ?? undefined;
+    this.suffix = data.suffix ?? '';
+
+    if(this.base === undefined && this.command === undefined) throw new Error('Base or command is required');
+    if(!this.name) throw new Error('Name is required');
+    if(!this.entries) throw new Error('Entries is required');
+
+    if(this.base !== undefined) this.range = this.base + this.entries.length;
+  }
+}
+
 /**
  * Database string type definition
  * Converted from GaiaLib/Database/DbStringType.cs
@@ -46,6 +70,7 @@ export class DbStringType {
   public commandLookup: Record<number, DbStringCommand>;
   public layers: DbStringLayer[];
   public greedyTerminator: boolean;
+  public dictionaries: Record<string, DbStringDictionary>;
 
   constructor(data: Partial<DbStringType>) {
     this.name = data.name ?? '';
@@ -56,6 +81,7 @@ export class DbStringType {
     this.commands = data.commands ?? {};
     this.layers = data.layers ?? [];
     this.greedyTerminator = data.greedyTerminator ?? false;
+    this.dictionaries = data.dictionaries ?? {};
     this.commandLookup = Object.values(this.commands).reduce((acc, x) => {
       acc[x.id] = x;
       return acc;

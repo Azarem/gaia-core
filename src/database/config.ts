@@ -2,6 +2,7 @@
 import { BinType } from '../types/resources';
 import type { DbEntryPoint } from './entrypoints';
 import type { DbPath } from './paths';
+import { MemoryMapMode } from '../types';
 
 /**
  * Database configuration
@@ -15,4 +16,5 @@ export interface DbConfig {
   //asmFormats: Record<AddressingMode, string>;
   entryPoints: DbEntryPoint[];
   paths: Record<BinType, DbPath>;
+  memoryMode: MemoryMapMode;
 } 

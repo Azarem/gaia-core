@@ -171,9 +171,9 @@ export class AddressingModeHandler {
   private handleAbsoluteLongMode(mnemonic: string, operands: unknown[], reg: Registers): void {
     const refLoc = this._dataReader.readUShort();
     const bank = this._dataReader.readByte();
-    const address = new Address(bank, refLoc);
+    const address = new Address(bank, refLoc, reg.mode);
 
-    if (address.space === AddressSpace.ROM) {
+    if (address.isROM) {
       const wrapper = new LocationWrapper(address.toInt(), AddressType.Address);
       if (this.isJumpInstruction(mnemonic)) {
         this._blockReader.noteType(wrapper.location, 'Code', false, reg);
@@ -215,7 +215,8 @@ export class AddressingModeHandler {
     if (mnemonic === 'COP') {
       const copDef = this._blockReader._root.copDef[cmd];
       if (!copDef) {
-        throw new Error('Unknown COP command');
+        //throw new Error('Unknown COP command');
+        return;
       }
 
       context.copDef = copDef;
@@ -245,9 +246,9 @@ export class AddressingModeHandler {
     }
 
     const isJump = isPush || isIndexedIndirect || this.isJumpInstruction(mnemonic);
-    const bank = xBank1 ?? (isJump ? (this._dataReader.position >> 16) : dataBank ?? 0x81);
+    const resolvedBank = xBank1 ?? (isJump ? Address.resolveBank(this._dataReader.position, registers.mode) : dataBank) ?? 0x81;
 
-    const addr = new Address(bank, refLoc);
+    const addr = new Address(resolvedBank, refLoc, registers.mode);
     if (addr.isROM) {
       const wrapper = new LocationWrapper(addr.toInt(), AddressType.Offset);
       if (isJump) {

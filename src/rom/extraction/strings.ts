@@ -9,6 +9,7 @@ import {
   TableEntry 
 } from '../../types';
 import type { DbStringType, DbStringCommand } from '../../database';
+import { DbStringTypeUtils } from '../../database';
 import type { StringWrapper } from '../../types';
 import type { BlockReader } from './blocks';
 import { indexOfAny } from '../../utils';
@@ -49,7 +50,8 @@ export class StringReader {
             builder.push(this._romDataReader.readUShort().toString(16).toUpperCase());
             break;
           case MemberType.Offset:
-            const loc = this._romDataReader.readUShort() | (this._romDataReader.position & 0x3F0000);
+            const loc = this._romDataReader.readUShort() | 
+              (Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode) << 16);
             builder.push(`^${loc.toString(16).toUpperCase().padStart(6, '0')}`);
             break;
           case MemberType.Address:
@@ -80,8 +82,9 @@ export class StringReader {
     }
   }
 
-  public parseString(stringType: DbStringType): StringWrapper {
-    const dict = stringType.commandLookup;
+  public parseString(stringType: DbStringType, fixedSize: number): StringWrapper {
+    const commands = stringType.commandLookup;
+    const dictionaries = stringType.dictionaries;
     const builder: string[] = [];
     const strLoc = this._romDataReader.position;
     const map = stringType.characterMap;
@@ -98,50 +101,45 @@ export class StringReader {
         break;
       }
 
-      const cmd = dict[c];
+      const cmd = commands[c];
       if (cmd) {
         this.resolveCommand(cmd, builder);
         if (cmd.halt) {
           break;
         }
       } else {
-        const index = this.shiftDown(c, stringType.shiftType);
-        if (index >= 0 && index < map.length) {
-          builder.push(map[index]);
-        } else {
-          // Fallback for unknown characters
-          builder.push(`[${c.toString(16).toUpperCase()}]`);
+        let found = false;
+        for(const dictionary of Object.values(dictionaries)) {
+          if(c >= dictionary.base && c <= dictionary.range) {
+            builder.push(dictionary.entries[c - dictionary.base] + dictionary.suffix);
+            found = true;
+            break;
+          }
+        }
+        if(!found) {
+          const index = DbStringTypeUtils.getShiftDown(stringType.shiftType)(c);
+          if (index >= 0 && index < map.length) {
+            builder.push(map[index]);
+          } else {
+            // Fallback for unknown characters
+            builder.push(`[${c.toString(16).toUpperCase()}]`);
+          }
         }
       }
+
+      if(fixedSize && this._romDataReader.position >= strLoc + fixedSize) break;
+      
     } while (this._blockReader.partCanContinue());
+
+    if(fixedSize && this._romDataReader.position < strLoc + fixedSize) this._romDataReader.position = strLoc + fixedSize;
 
     return {
       string: builder.join(''),
       type: stringType,
       marker: 0,
-      location: strLoc
+      location: strLoc,
+      fixedSize
     };
-  }
-
-  /**
-   * Handles character shifting based on string type
-   * This is a simplified implementation of the shift logic
-   */
-  private shiftDown(c: number, shiftType?: string): number {
-    if (!shiftType) {
-      return c;
-    }
-
-    switch (shiftType) {
-      case 'wh2':
-        // wh2 shift: ((c & 0x70) >> 1) | (c & 0x07)
-        return ((c & 0x70) >> 1) | (c & 0x07);
-      case 'h2':
-        // h2 shift: ((c & 0xE0) >> 1) | (c & 0x0F)
-        return ((c & 0xE0) >> 1) | (c & 0x0F);
-      default:
-        return c;
-    }
   }
 
   public resolveString(sw: StringWrapper, isBranch: boolean): void {
@@ -154,8 +152,8 @@ export class StringReader {
         const sloc = parseInt(hexStr, 16);
         
         if (!isNaN(sloc)) {
-          const addrs = new Address(sloc >> 16, sloc & 0xFFFF);
-          if (addrs.space === AddressSpace.ROM) {
+          const addrs = new Address((sloc >> 16) & 0xFF, sloc & 0xFFFF, this._blockReader._root.config.memoryMode);
+          if (addrs.isROM) {
             this._blockReader.resolveInclude(sloc, false);
             const name = this._blockReader.resolveName(sloc, AddressType.Unknown, false);
             const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);

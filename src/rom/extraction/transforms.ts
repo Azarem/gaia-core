@@ -2,6 +2,7 @@ import { RomDataReader } from './reader';
 import { ReferenceManager } from './references';
 import { RomProcessingConstants } from '../../types/constants';
 import type { BlockReader } from './blocks';
+import { Address } from '../../types/addressing';
 
 /**
  * Handles transform processing for assembly instructions
@@ -58,34 +59,32 @@ export class TransformProcessor {
     }
 
     // There is special logic for empty labels
-    if (transform === '') {
-      this.applyDefaultTransform(operandIndex, operands);
+    const hasBank = transform.startsWith('$');
+    if (transform === '' || hasBank) {
+      this.applyDefaultTransform(operandIndex, operands, hasBank ? parseInt(transform.substring(1), 16) : undefined);
     } else {
       operands[operandIndex] = transform; // Otherwise it is a direct replacement
     }
   }
 
-  private applyDefaultTransform(operandIndex: number, operands: unknown[]): void {
-    
-    let value = (this._romDataReader.position & 0xFF0000);
+  private applyDefaultTransform(operandIndex: number, operands: unknown[], bank?: number): void {
     const opnd = operands[operandIndex] as any;
-    if(opnd && 'value' in opnd) {
-      value |= opnd['value'];
-    } else {
-      value |= opnd as number;
-    }
+    const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
+    const offset = opnd && 'value' in opnd ? opnd['value'] : opnd as number;
+    const adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+    const loc = adrs.toInt();
 
-    const nameResult = this._referenceManager.tryGetName(value);
+    const nameResult = this._referenceManager.tryGetName(loc);
     let referenceName: string;
     
     if (!nameResult.found) {
-      referenceName = `loc_${value.toString(16).toUpperCase().padStart(6, '0')}`;
-      this._referenceManager.tryAddName(value, referenceName);
+      referenceName = `loc_${adrs.toString()}`;
+      this._referenceManager.tryAddName(loc, referenceName);
     } else {
       referenceName = nameResult.referenceName!;
     }
     
-    this._blockReader.resolveInclude(value, false);
+    this._blockReader.resolveInclude(loc, false);
     operands[operandIndex] = `&${referenceName}`;
   }
 

@@ -71,6 +71,7 @@ export class RomProcessingConstants {
 
         switch (obj[0]) {
           case '@':
+          case '%':
             return 3;
           case '*':
           case '&':

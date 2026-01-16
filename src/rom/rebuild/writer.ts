@@ -407,6 +407,9 @@ export class RomWriter {
               case AddressType.Address:
                 currentObj = new Long(loc | ((loc & 0xFFFF) >= 0x8000 ? 0x800000 : 0xC00000));
                 continue;
+              case AddressType.Location:
+                currentObj = new Long(loc);
+                continue;
               default:
                 currentObj = new Byte(loc);
                 continue;

@@ -1,18 +1,11 @@
-/**
- * Table entry definition
- * Converted from GaiaLib/Types/TableEntry.cs
- */
-export interface TableEntry {
+
+export class TableEntry {
   location: number;
   object: unknown;
-}
 
-/**
- * Creates a new TableEntry
- */
-export function createTableEntry(location: number, object?: unknown): TableEntry {
-  return {
-    location,
-    object
-  };
-} 
+  constructor(location: number) {
+    this.location = location ?? undefined;
+
+    if(this.location === undefined) throw new Error('Location is required');
+  }
+}
