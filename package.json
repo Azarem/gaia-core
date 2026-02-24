@@ -1,10 +1,10 @@
 {
   "name": "@gaialabs/core",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "GaiaLabs TypeScript Core Library - Universal ROM processing engine",
   "funding": "https://github.com/sponsors/Azarem",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/index.cjs",
+  "types": "dist/index.d.cts",
   "module": "dist/index.mjs",
   "publishConfig": {
     "access": "public"
@@ -39,9 +39,9 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/index.d.cts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "require": "./dist/index.cjs"
     }
   },
   "keywords": [

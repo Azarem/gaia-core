@@ -81,8 +81,8 @@ export class RomGenerator {
     for (const asm of chunkFiles) ChunkFileUtils.calculateSize(asm);
 
     //Assign locations
-    const layout = new RomLayout(chunkFiles);
-    layout.organize();
+    const layout = new RomLayout(chunkFiles, this.dbRoot);
+    const pages = layout.organize();
 
     //Rebase assemblies
     for (const file of asmFiles) ChunkFileUtils.rebase(file);
@@ -93,7 +93,7 @@ export class RomGenerator {
     const blockLookup = new Map<string, number>();
     for (const f of chunkFiles) blockLookup.set(f.name.toUpperCase(), f.location);
 
-    const outRom = await this.writeRom(blockLookup, chunkFiles, asmFiles);
+    const outRom = await this.writeRom(blockLookup, chunkFiles, asmFiles, pages);
     return outRom;
   }
 
@@ -173,9 +173,11 @@ export class RomGenerator {
     }
   }
 
-  private async writeRom(blockLookup: Map<string, number>, chunkFiles: ChunkFile[], asmFiles: ChunkFile[]){
+  private async writeRom(blockLookup: Map<string, number>, chunkFiles: ChunkFile[], asmFiles: ChunkFile[], pages: number){
     //Create rom writer
     const romWriter = new RomWriter(this.dbRoot, "GAIALABS", "01JG  ");
+
+    romWriter.allocate(pages);
 
     // Write all files
     for (const file of chunkFiles) await romWriter.writeFile(file, blockLookup);

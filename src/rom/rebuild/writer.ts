@@ -15,14 +15,15 @@ import {
 import { DbEntryPoint, DbRoot } from '../../database';
 import { RomProcessor as RebuildProcessor } from './processor';
 import { Op } from '../../types/assembly';
-
+import { CpuMode, MemoryMapMode } from '../../types/addressing';
 /**
  * ROM writer (binary)
  * Converted from ext/GaiaLib/Rom/Rebuild/RomWriter.cs (subset: binary write only)
  */
 export class RomWriter {
   public bpsPath?: string;
-  public readonly outBuffer: Uint8Array;
+  public outBuffer?: Uint8Array;
+  private romSize? : number;
   //public readonly entryPoints: DbEntryPoint[];
   public readonly cartName: string;
   public readonly makerCode: string;
@@ -34,7 +35,7 @@ export class RomWriter {
     this.root = root;
     //this.entryPoints = entryPoints;
     //There needs to be a way to determine the rom size and makeup
-    this.outBuffer = new Uint8Array(0x400000);
+    //this.outBuffer = new Uint8Array(0x400000);
   }
 
   public async repack(files: ChunkFile[]): Promise<Uint8Array> {
@@ -49,17 +50,33 @@ export class RomWriter {
     return this.outBuffer;
   }
 
+  public allocate(pages: number): void {
+    const size = pages * RomProcessingConstants.PAGE_SIZE;
+    let bits = 0;
+    let target = 1 << 10; // 1KB
+
+    while(target < size) {
+      target <<= 1;
+      bits++;
+    }
+
+    this.romSize = bits;
+    this.outBuffer = new Uint8Array(target);
+  }
+
   public writeHeader(): void {
     const buf = this.outBuffer!;
     // Maker/game code at 0xFFB0
-    let pos = 0xFFB0;
+    let pos = this.root.config.memoryMode === MemoryMapMode.Lo ? 0x7FB0 : 0xFFB0;
     this.writeAscii(this.makerCode.padEnd(6, ' '), pos); pos += 6;
     for (let i = 0; i < 10; i++) buf[pos++] = 0;
     this.writeAscii(this.cartName.toUpperCase().padEnd(21, ' '), pos); pos += 21;
-    buf[pos++] = 0x31; // map mode
-    buf[pos++] = 0x02; // chipset
-    buf[pos++] = 0x0C; // ROM size
-    buf[pos++] = 0x03; // RAM size
+    buf[pos++] = 0x20  // map mode
+      | (this.root.config.cpuMode === CpuMode.Fast ? 0x10 : 0x00)
+      | (this.root.config.memoryMode === MemoryMapMode.Hi ? 1 : this.root.config.memoryMode === MemoryMapMode.ExHi ? 5 : 0);
+    buf[pos++] = this.root.config.chipset; // chipset
+    buf[pos++] = this.romSize!; // ROM size
+    buf[pos++] = this.root.config.ramSize; // RAM size
     buf[pos++] = 0x01; // country
     buf[pos++] = 0x33; // dev id
     buf[pos++] = 0x00; // version
@@ -67,24 +84,25 @@ export class RomWriter {
 
   public writeChecksum(): void {
     const buf = this.outBuffer!;
+    let pos = this.root.config.memoryMode === MemoryMapMode.Lo ? 0x7FDC : 0xFFDC;
     
     // Not sure why this is needed, but it is
-    buf[0xFFDC] = 0xFF;
-    buf[0xFFDD] = 0xFF;
-    buf[0xFFDE] = 0;
-    buf[0xFFDF] = 0;
+    buf[pos] = 0xFF;
+    buf[pos + 1] = 0xFF;
+    buf[pos + 2] = 0;
+    buf[pos + 3] = 0;
 
     // checksum
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i];
 
     // checksum at 0xFFDE
-    buf[0xFFDE] = sum & 0xFF;
-    buf[0xFFDF] = (sum >> 8) & 0xFF;
+    buf[pos + 2] = sum & 0xFF;
+    buf[pos + 3] = (sum >> 8) & 0xFF;
     // complement at 0xFFDC
     const comp = ~sum;
-    buf[0xFFDC] = comp & 0xFF;
-    buf[0xFFDD] = (comp >> 8) & 0xFF;
+    buf[pos] = comp & 0xFF;
+    buf[pos + 1] = (comp >> 8) & 0xFF;
   }
 
   // private async generatePatch(): Promise<void> {
@@ -114,8 +132,10 @@ export class RomWriter {
     for (const ep of this.root.config.entryPoints) {
       const match = entryBlocks.find(b => b.label === ep.name);
       if (match) {
-        buf[ep.location] = match.location & 0xFF;
-        buf[ep.location + 1] = (match.location >> 8) & 0xFF;
+        let location = match.location;
+        if(this.root.config.memoryMode === MemoryMapMode.Lo) location += RomProcessingConstants.PAGE_SIZE;
+        buf[ep.location] = location & 0xFF;
+        buf[ep.location + 1] = (location >> 8) & 0xFF;
       }
     }
   }
@@ -172,36 +192,23 @@ export class RomWriter {
       let remain = file.size;
       let srcPos = 0;
 
-      if(file.type.header === -2) {
-        remain -= 2;
-        buf[pos++] = remain & 0xFF;
-        buf[pos++] = (remain >> 8) & 0xFF;
-      } else if (file.type.header > 0) {
-        remain -= file.type.header;
-        for (let i = 0; i < file.type.header; i++) buf[pos++] = data[srcPos++];
+      if (file.compressed !== true) {
+        if (file.type.header === -2) {
+          remain -= 2;
+          buf[pos++] = remain & 0xFF;
+          buf[pos++] = (remain >> 8) & 0xFF;
+        } else if (file.type.header > 0) {
+          remain -= file.type.header;
+          for (let i = 0; i < file.type.header; i++) buf[pos++] = data[srcPos++];
+        }
       }
 
-      // if (file.type === BinType.Tilemap) {
-      //   remain -= 2;
-      //   buf[pos++] = data[srcPos++];
-      //   buf[pos++] = data[srcPos++];
-      // } else if (file.type === BinType.Meta17) {
-      //   remain -= 4;
-      //   for (let i = 0; i < 4; i++) buf[pos++] = data[srcPos++];
-      // } else if (file.type === BinType.Sound) {
-      //   remain -= 2;
-      //   buf[pos++] = remain & 0xFF;
-      //   buf[pos++] = (remain >> 8) & 0xFF;
-      // }
-
-      //TODO: in the future perhaps we can compress assets, but for now this is not needed
-
-      //Write compression header
-      if (file.compressed !== undefined) {
+      //Write null compression header
+      if (file.compressed === false) {
         remain -= 2;
-        const inverse = (0 - remain) & 0xFFFF;
-        buf[pos++] = inverse & 0xFF;
-        buf[pos++] = (inverse >> 8) & 0xFF;
+        const size = (0 - remain) & 0xFFFF;
+        buf[pos++] = size & 0xFF;
+        buf[pos++] = (size >> 8) & 0xFF;
       }
 
       // Copy the rest
@@ -367,7 +374,7 @@ export class RomWriter {
               }
             }
 
-            let type = Address.typeFromCode(str[0]);
+            let type = isRelative ? (parentOp?.size === 3 ? AddressType.WRelative : AddressType.Relative) : Address.typeFromCode(str[0]);
             if (type === AddressType.Unknown) {
               type = parentOp?.size === 4 ? AddressType.Address
                 : parentOp?.size === 2 ? AddressType.Unknown : AddressType.Offset;
@@ -394,22 +401,28 @@ export class RomWriter {
               }
             }
 
+            if(!isRelative && type !== AddressType.Location) {
+              const address = Address.fromLocation(loc, this.root.config.memoryMode, this.root.config.cpuMode);
+              loc = address.toInt();
+            }
+
             switch (type) {
               case AddressType.Offset:
+              case AddressType.WRelative:
                 currentObj = new Word(loc);
                 continue;
               case AddressType.Bank:
-                currentObj = new Byte(((loc >> 16) | ((loc & 0xFFFF) >= 0x8000 ? 0x80 : 0xC0)));
+                currentObj = new Byte(loc >> 16);
                 continue;
               case AddressType.WBank:
-                currentObj = new Word(((loc >> 16) | ((loc & 0xFFFF) >= 0x8000 ? 0x80 : 0xC0)));
+                currentObj = new Word(loc >> 16);
                 continue;
               case AddressType.Address:
-                currentObj = new Long(loc | ((loc & 0xFFFF) >= 0x8000 ? 0x800000 : 0xC00000));
-                continue;
               case AddressType.Location:
                 currentObj = new Long(loc);
                 continue;
+              case AddressType.Unknown:
+              case AddressType.Relative:
               default:
                 currentObj = new Byte(loc);
                 continue;

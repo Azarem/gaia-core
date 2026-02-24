@@ -100,16 +100,18 @@ export class QuintetLZ implements ICompressionProvider {
    * @param srcData Source data to compress
    * @returns Compressed data
    */
-  public compact(srcData: Uint8Array): Uint8Array {
+  public compact(srcData: Uint8Array, srcPosition?: number, srcLen?: number): Uint8Array {
     // Initialize dictionary with spaces
     const dictionary = new Uint8Array(QuintetLZ.DICTIONARY_SIZE);
     dictionary.fill(QuintetLZ.DICTIONARY_INIT);
 
     let offset = QuintetLZ.DICTIONARY_OFFSET;
-    let srcIx = 0;
+    let srcIx = srcPosition ?? 0;
     let dstIx = 0;
 
-    const srcLen = srcData.length;
+    if(!srcLen) srcLen = srcData.length - srcIx;
+
+    //const srcLen = srcData.length;
     const outputBuffer = new Uint8Array(srcLen * 2); // Allocate extra space for safety
 
     // Write header (16-bit length in little-endian)

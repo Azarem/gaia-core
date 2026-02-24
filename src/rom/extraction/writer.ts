@@ -290,7 +290,7 @@ export class BlockWriter {
     return ObjectType.String;
   }
 
-  private writeObject(obj: any, depth: number, isBranch: boolean = false): string[] {
+  private writeObject(obj: any, depth: number, isBranch: boolean = false, isArray: boolean = false): string[] {
     const lines: string[] = [];
 
     const objType = this.getObjectType(obj);
@@ -320,7 +320,9 @@ export class BlockWriter {
         break;
 
       case ObjectType.Address:
-        objLines = [`$${(obj as Address).toString()}`];
+        objLines = isArray 
+          ? [`$#${(obj as Address).offset.toString(16).toUpperCase().padStart(4, '0')}`] 
+          : [`$${(obj as Address).toString()}`];
         break;
 
       case ObjectType.ByteArray:
@@ -488,17 +490,19 @@ export class BlockWriter {
         const hexStr = str.substring(ix + 1, ix + 7);
         const rawAddr = parseInt(hexStr, 16);
         const adrs = new Address((rawAddr >> 16) & 0xFF, rawAddr & 0xFFFF, this._blockReader._root.config.memoryMode);
+        const addressType = char === '^' ? AddressType.Offset : AddressType.Address;
+        let name = '';
         
         if (adrs.isROM) {
-          const addressType = char === '^' ? AddressType.Offset : AddressType.Address;
-          const location = adrs.toInt();
-          const name = this._blockReader.resolveName(location, addressType, false);
-          str = str.replace(str.substring(ix, ix + 7), name);
+          name = this._blockReader.resolveName(adrs.toLocation(), addressType, false);
+        } else if(addressType === AddressType.Offset) {
+          name = adrs.offset.toString(16).toUpperCase().padStart(4, '0');
         } else {
-          //throw new Error('Unsupported address space');
+          name = adrs.toString();
         }
         
-        ix = str.indexOf(char, ix + 7);
+        str = str.replace(str.substring(ix, ix + 7), name);
+        ix = str.indexOf(char);
       }
     }
 
@@ -566,7 +570,7 @@ export class BlockWriter {
     this._isInline = false; // start elements on their own lines
 
     for (let i = 0; i < arr.length; i++) {
-      const objLines = this.writeObject(arr[i], depth + 1);
+      const objLines = this.writeObject(arr[i], depth + 1, false, true);
       for(const line of objLines) {
         lines.push(indent + '  ' + line);
       }

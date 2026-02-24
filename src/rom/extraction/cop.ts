@@ -119,7 +119,7 @@ export class CopCommandProcessor {
 
     const addr = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
     if (addr.isROM) {
-      const location = addr.toInt();
+      const location = addr.toLocation();
       if (partStr !== 'Address' && isPtr && !this._blockReader._root.rewrites[location]) {
         this._blockReader.noteType(location, otherStr, true);
       }

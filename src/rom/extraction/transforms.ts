@@ -2,7 +2,8 @@ import { RomDataReader } from './reader';
 import { ReferenceManager } from './references';
 import { RomProcessingConstants } from '../../types/constants';
 import type { BlockReader } from './blocks';
-import { Address } from '../../types/addressing';
+import { Address, AddressType } from '../../types/addressing';
+import { LocationWrapper } from '../..';
 
 /**
  * Handles transform processing for assembly instructions
@@ -72,20 +73,23 @@ export class TransformProcessor {
     const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
     const offset = opnd && 'value' in opnd ? opnd['value'] : opnd as number;
     const adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
-    const loc = adrs.toInt();
+    const loc = adrs.toLocation();
 
-    const nameResult = this._referenceManager.tryGetName(loc);
-    let referenceName: string;
+    operands[operandIndex] = new LocationWrapper(loc, AddressType.Offset);
+    return;
+
+    // const nameResult = this._referenceManager.tryGetName(loc);
+    // let referenceName: string;
     
-    if (!nameResult.found) {
-      referenceName = `loc_${adrs.toString()}`;
-      this._referenceManager.tryAddName(loc, referenceName);
-    } else {
-      referenceName = nameResult.referenceName!;
-    }
+    // if (!nameResult.found) {
+    //   referenceName = `loc_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
+    //   this._referenceManager.tryAddName(loc, referenceName);
+    // } else {
+    //   referenceName = nameResult.referenceName!;
+    // }
     
-    this._blockReader.resolveInclude(loc, false);
-    operands[operandIndex] = `&${referenceName}`;
+    // this._blockReader.resolveInclude(loc, false);
+    // operands[operandIndex] = `&${referenceName}`;
   }
 
   private cleanTransformName(transform: string): string {

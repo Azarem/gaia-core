@@ -27,6 +27,16 @@ export class RomProcessor {
       if (file.type.type === "Patch") {
         patches.push(file);
       } else if (file.type.type !== "Assembly") {
+        if(file.compressed === true) {
+          if(this.writer.root.config.uncompress){
+            file.compressed = false;
+          } else {
+            let newData = this.writer.root.compression.compact(file.rawData!, file.type.header);
+            if(file.type.header) newData = new Uint8Array([...file.rawData.slice(0, file.type.header), ...newData]);
+            file.rawData = newData;
+            file.size = newData.length;
+          }
+        }
         continue;
       }
       
@@ -67,8 +77,8 @@ export class RomProcessor {
     }
 
     // Assign locations
-    const layout = new RomLayout(allFiles);
-    layout.organize();
+    const layout = new RomLayout(allFiles, this.writer.root);
+    const pages = layout.organize();
 
     // Rebase assemblies
     for (const file of asmFiles) {
@@ -98,6 +108,9 @@ export class RomProcessor {
     for (const f of allFiles) {
       blockLookup.set(f.name.toUpperCase(), f.location);
     }
+    
+    //Allocate memory for the ROM
+    this.writer.allocate(pages);
 
     // Write all files
     for (const file of allFiles) {

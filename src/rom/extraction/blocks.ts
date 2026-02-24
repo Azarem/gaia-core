@@ -349,31 +349,46 @@ export class BlockReader {
    */
   private createChunkFilesFromSfx(): void {
     let pos = this._root.config.sfxLocation;
+    let offset = 0;
     const count = this._root.config.sfxCount;
     const romData = this._romDataReader.romData;
     const fileType = Object.values(this._root.fileTypes).find(x => x.type === BinType.Sound)!;
 
-    const getSize = () => romData[pos++] | (romData[pos++] << 8);
+    const getByte = this._root.config.sfxType === 'Striped' ? () => {
+      const byte = romData[pos + offset++];
+      if(offset & RomProcessingConstants.PAGE_SIZE) offset += RomProcessingConstants.PAGE_SIZE;
+      return byte;
+    } : () => romData[pos + offset++];
 
-    for (let i = 0; i < count; i++) {
-      const size = getSize();
-      const startPos = pos;
-      let remaining = size;
+    const getSize = () => getByte() | (getByte() << 8);
 
-      let end = pos + remaining;
+    const getBytes = this._root.config.sfxType === 'Striped' ? (size: number) => {
+      let end = offset + size;
       let data: Uint8Array;
       if (end & RomProcessingConstants.PAGE_SIZE) {
         const endLen = end & 0x7FFF;
-        remaining -= endLen;
-        data = romData.slice(pos, pos + remaining);
-        pos += remaining + RomProcessingConstants.PAGE_SIZE;
-        end = pos + endLen;
-        const data2 = romData.slice(pos, end);
+        size -= endLen;
+        data = romData.slice(pos + offset, pos + offset + size);
+        offset += size + RomProcessingConstants.PAGE_SIZE;
+        end = offset + endLen;
+        const data2 = romData.slice(pos + offset, pos + end);
         data = new Uint8Array([...data, ...data2]);
       } else {
-        data = romData.slice(pos, end);
+        data = romData.slice(pos + offset, pos + end);
       }
-      pos = end;
+      offset = end;
+      return data;
+    } : (size: number) => {
+      const end = offset + size;
+      const data = romData.slice(pos + offset, pos + end);
+      offset = end;
+      return data;
+    }
+
+    for (let i = 0; i < count; i++) {
+      const size = getSize();
+      const startPos = pos + offset;
+      const data = getBytes(size);
 
       const chunk = new ChunkFile(`sfx${i.toString(16).toUpperCase().padStart(2, '0')}`, size, startPos, fileType);
       chunk.rawData = data;
@@ -397,7 +412,7 @@ export class BlockReader {
    */
   private createChunkFilesFromDbBlocks(): void {
     for (const block of this._root.blocks) {
-      const chunkFile = createChunkFileFromDbBlock(block, Object.values(this._root.fileTypes).find(x => x.isBlock));
+      const chunkFile = createChunkFileFromDbBlock(block, Object.values(this._root.fileTypes).find(x => x.isBlock), this._root.config.memoryMode);
       this._enrichedChunks.push(chunkFile);
     }
   }

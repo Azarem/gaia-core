@@ -2,7 +2,7 @@
 import { BinType } from '../types/resources';
 import type { DbEntryPoint } from './entrypoints';
 import type { DbPath } from './paths';
-import { MemoryMapMode } from '../types';
+import { CpuMode, MemoryMapMode } from '../types';
 
 /**
  * Database configuration
@@ -11,10 +11,16 @@ import { MemoryMapMode } from '../types';
 export interface DbConfig {
   sfxLocation: number;
   sfxCount: number;
+  sfxType: string;
+  sfxPack: string;
   //accentMap: string[];
   compression: string;
+  uncompress: boolean;
   //asmFormats: Record<AddressingMode, string>;
   entryPoints: DbEntryPoint[];
   paths: Record<BinType, DbPath>;
   memoryMode: MemoryMapMode;
+  cpuMode: CpuMode;
+  chipset: number;
+  ramSize: number;
 } 

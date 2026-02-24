@@ -7,7 +7,7 @@ import { MemberType } from '../types/members';
 export class DbStringCommand {
   public id: number;
   public name: string;
-  public types: MemberType[];
+  public types: string[];
   public delimiter?: number;
   public halt: boolean;
 
@@ -37,7 +37,7 @@ export class DbStringDictionary {
   public range: number;
   public command: number;
   public name: string;
-  public suffix: string;
+  //public suffix: string;
   public entries: string[];
 
   constructor(data: Partial<DbStringDictionary>) {
@@ -46,7 +46,7 @@ export class DbStringDictionary {
     this.command = data.command ?? undefined;
     this.name = data.name ?? '';
     this.entries = data.entries ?? undefined;
-    this.suffix = data.suffix ?? '';
+    //this.suffix = data.suffix ?? '';
 
     if(this.base === undefined && this.command === undefined) throw new Error('Base or command is required');
     if(!this.name) throw new Error('Name is required');

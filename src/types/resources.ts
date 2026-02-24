@@ -9,10 +9,11 @@ export enum BinType {
   Palette = 'Palette',
   Sound = 'Sound',
   Music = 'Music',
-  Unknown = 'Unknown',
+  //Unknown = 'Unknown',
   Meta17 = 'Meta17',
   Spritemap = 'Spritemap',
   Assembly = 'Assembly',
   Patch = 'Patch',
-  Transform = 'Transform'
+  Transform = 'Transform',
+  Binary = 'Binary'
 } 

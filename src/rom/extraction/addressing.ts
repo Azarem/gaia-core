@@ -174,7 +174,7 @@ export class AddressingModeHandler {
     const address = new Address(bank, refLoc, reg.mode);
 
     if (address.isROM) {
-      const wrapper = new LocationWrapper(address.toInt(), AddressType.Address);
+      const wrapper = new LocationWrapper(address.toLocation(), AddressType.Address);
       if (this.isJumpInstruction(mnemonic)) {
         this._blockReader.noteType(wrapper.location, 'Code', false, reg);
       }
@@ -201,7 +201,7 @@ export class AddressingModeHandler {
 
     //this._blockReader.noteType(relative, 'Code', false, reg);
     this._blockReader.updateRegisterState(relative, reg);
-    operands.push(new LocationWrapper(relative, AddressType.Relative));
+    operands.push(new LocationWrapper(relative, isLong ? AddressType.WRelative : AddressType.Relative));
   }
 
   private handleStackRelativeMode(operands: unknown[]): void {
@@ -250,7 +250,7 @@ export class AddressingModeHandler {
 
     const addr = new Address(resolvedBank, refLoc, registers.mode);
     if (addr.isROM) {
-      const wrapper = new LocationWrapper(addr.toInt(), AddressType.Offset);
+      const wrapper = new LocationWrapper(addr.toLocation(), AddressType.Offset);
       if (isJump) {
         const type = isIndexedIndirect ? '&Code' : 'Code';
         const name = this._blockReader.noteType(wrapper.location, type, isPush, registers);

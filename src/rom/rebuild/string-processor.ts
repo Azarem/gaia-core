@@ -81,16 +81,41 @@ export class StringProcessor {
   }
 
   private processString(str: string, stringType: DbStringType): void {
-    const dict = stringType.commands;
+    const cmdLookup = stringType.commands;
     //const charMap = stringType.characterMap;
     //const shift = this.getShiftUp(stringType.shiftType);
+    const dictLookup = stringType.dictionaries;
     let lastCmd: DbStringCommand | null = null;
+
+    for(const dictionary of Object.values(dictLookup)) {
+      for(let ix = 0; ix < dictionary.entries.length; ix++) {
+        const entry = dictionary.entries[ix];
+        const six = str.indexOf(entry);
+        if(six >= 0) {
+          if(dictionary.command !== undefined){
+            str = str.replace(entry, `[${dictionary.command}:${(ix + dictionary.base).toString(16).toUpperCase()}]`);
+          } else {
+            str = str.replace(entry, `[${(ix + dictionary.base).toString(16).toUpperCase()}]`);
+          }
+        }
+      }
+    }
+
 
     for (let x = 0; x < str.length; x++) {
       const c = str[x];
       if (c === '[') {
         const endIx = str.indexOf(']', x + 1);
         const splitChars = [':', ',', ' '];
+        const subStr = str.substring(x + 1, endIx);
+        let ix = subStr.length === 2 ? parseInt(subStr, 16) : NaN;
+        
+        if(!isNaN(ix)) {
+          this.memBuffer.push(ix);
+          x = endIx;
+          continue;
+        }
+
         const parts = str.substring(x + 1, endIx)
           .split(new RegExp(`[${splitChars.join('')}]`))
           .filter(p => p.length > 0);
@@ -106,7 +131,7 @@ export class StringProcessor {
           continue;
         }
 
-        const cmd = dict[parts[0]];
+        const cmd = cmdLookup[parts[0]];
         if (cmd) {
           lastCmd = cmd;
           this.memBuffer.push(cmd.id);

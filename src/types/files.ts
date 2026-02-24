@@ -3,6 +3,7 @@ import { AsmBlock, AsmBlockUtils } from './assembly';
 import { DbFile, DbFileType } from '../database/files';
 import { DbBlock } from '../database/blocks';
 import { ICompressionProvider } from './compression';
+import { MemoryMapMode } from './addressing';
 
 /**
  * Types that should have a compression header by default but should not be compressed
@@ -105,7 +106,7 @@ export function createChunkFileFromDbFile(rom: Uint8Array, compression: ICompres
   return chunkFile;
 }
 
-export function createChunkFileFromDbBlock(block: DbBlock, fileType: DbFileType): ChunkFile {
+export function createChunkFileFromDbBlock(block: DbBlock, fileType: DbFileType, memoryMode: MemoryMapMode): ChunkFile {
   // Create assembly ChunkFile
   const chunkFile = new ChunkFile(block.name, 0, 0, fileType);
   //chunkFile.id = block.id;
@@ -113,7 +114,7 @@ export function createChunkFileFromDbBlock(block: DbBlock, fileType: DbFileType)
   chunkFile.scene = block.scene;
   
   // Enrich with AsmBlock parts
-  enrichWithPartsFromDbBlock(chunkFile, block);
+  enrichWithPartsFromDbBlock(chunkFile, block, memoryMode);
   
   return chunkFile;
 }
@@ -176,14 +177,14 @@ function enrichWithRawDataFromDbFile(rom: Uint8Array, chunkFile: ChunkFile, comp
 /**
  * Enriches ChunkFile with AsmBlock parts from DbBlock
  */
-function enrichWithPartsFromDbBlock(chunkFile: ChunkFile, block: DbBlock): void {
+function enrichWithPartsFromDbBlock(chunkFile: ChunkFile, block: DbBlock, memoryMode: MemoryMapMode): void {
   chunkFile.parts = [];
   chunkFile.size = 0;
   if(!block.parts?.length) {
     throw new Error(`Block ${block.name} has no parts`);
   }
   chunkFile.location = block.parts[0].start;
-  chunkFile.bank = block.movable ? undefined : chunkFile.location >> 16;
+  chunkFile.bank = block.movable ? undefined : (memoryMode === MemoryMapMode.Lo ? chunkFile.location >> 15 : chunkFile.location >> 16);
   chunkFile.transforms = block.transforms;
   chunkFile.postProcess = block.postProcess;
   
@@ -233,9 +234,12 @@ export class ChunkFileUtils {
    */
   static calculateSize(chunkFile: ChunkFile): number {
     if (!chunkFile.parts) {
-      if (typeof chunkFile.compressed === 'boolean' || chunkFile.type.header === -2)
-        chunkFile.size += 2;
-      return chunkFile.size;
+      let size = chunkFile.rawData?.length ?? chunkFile.size;
+      if (chunkFile.type.header === -2 || chunkFile.compressed === false){
+        size += 2;
+        chunkFile.size = size;
+      }
+      return size;
     }
 
     let size = 0;

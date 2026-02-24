@@ -1,5 +1,9 @@
 import { RomProcessingConstants } from '../../types/constants';
-import type { ChunkFile } from '../../types/files';
+import { ChunkFile } from '../../types/files';
+import { MemoryMapMode } from '../../types/addressing';
+import type { DbConfig } from '../../database/config';
+import type { DbRoot } from '../../database/root';
+import { BinType } from '../../types/resources';
 
 /**
  * ROM layout planner
@@ -17,11 +21,25 @@ export class RomLayout {
   private bestDepth = 0;
   private bestOffset = 0;
   private bestRemain = 0;
+  private root: DbRoot;
+  private config: DbConfig;
+  private sfxPackType: string;
+  public readonly sfxFiles: ChunkFile[] = [];
 
-  constructor(files: Iterable<ChunkFile>) {
+  constructor(files: ChunkFile[], root: DbRoot) {
+    this.root = root;
+    this.config = root.config;
+    this.sfxPackType = root.config.sfxPack ?? root.config.sfxType;
+    this.sfxFiles = this.sfxPackType !== 'Individual' ? files.filter(x => x.type.type === 'Sound')
+      .sort((a, b) => {
+        const aId = parseInt(a.name.substring(a.name.length - 2, a.name.length), 16);
+        const bId = parseInt(b.name.substring(b.name.length - 2, b.name.length), 16);
+        return aId - bId;
+      }) : [];
+      
     // Filter out zero-size files and order: assembly first, then by size desc
-    this.unmatchedFiles = Array.from(files)
-      .filter(x => (x.size || 0) > 0)
+    this.unmatchedFiles = files.filter(x => (x.size || 0) > 0)
+      .filter(x => this.sfxPackType === 'Individual' || x.type.type !== 'Sound')
       .sort((a, b) => {
         const aAsm = a.parts ? 0 : 1;
         const bAsm = b.parts ? 0 : 1;
@@ -32,19 +50,87 @@ export class RomLayout {
       });
   }
 
-  public organize(): void {
-    for (let page = 0; page < 0x80; page++) {
+  public organize(): number {
+    let stripeSfx = false;
+    let page: number;
+    const maxPages = this.config.memoryMode === MemoryMapMode.Hi ? 0x80 
+      : this.config.memoryMode === MemoryMapMode.ExHi ? 0x100
+      : 0x40;
+    for (page = 0; page < maxPages; page++) {
       if (this.unmatchedFiles.length === 0) break;
-
+      let start = page << 15; // 0x8000 per page
       let remain = RomProcessingConstants.PAGE_SIZE;
-      if (page === 1) remain -= RomProcessingConstants.SNES_HEADER_SIZE;
+      
+      if(start <= this.config.sfxLocation && start + remain > this.config.sfxLocation) {
+        const gap = this.config.sfxLocation - start;
+        //if(gap) do something
 
-      this.currentUpper = (page & 1) !== 0;
-      this.currentBank = page >> 1;
+        if(this.sfxPackType === 'Sequential') {
+          let offset = 0;
+          for(const file of this.sfxFiles) {
+            file.location = start + offset;
+            console.log(`  ${file.location.toString(16).toUpperCase().padStart(6, '0')}: ${file.name}`);
+            offset += file.size;
+            if(offset & RomProcessingConstants.PAGE_SIZE) {
+              offset &= 0x7FFF;
+              console.log(`Page ${start.toString(16).toUpperCase().padStart(6, '0')} matched with SFX files 0 remaining`);
+              start += RomProcessingConstants.PAGE_SIZE;
+              page++;
+            }
+          }
+          console.log(`Page ${start.toString(16).toUpperCase().padStart(6, '0')} matched with SFX files ${remain} remaining`);
+          start += offset;
+          remain = RomProcessingConstants.PAGE_SIZE - offset;
+        } else if(this.sfxPackType === 'Striped') {
+          stripeSfx = true;
+        }
+      }
+
+      if ((page === 0 && this.config.memoryMode === MemoryMapMode.Lo) ||
+          (page === 1 && this.config.memoryMode === MemoryMapMode.Hi)) {
+        remain -= RomProcessingConstants.SNES_HEADER_SIZE;
+      }
+
+      if(stripeSfx) {
+        let offset = 0;
+        while(remain > 0 && this.sfxFiles.length) {
+          const file = this.sfxFiles.shift();
+          file.location = start + offset;
+          console.log(`  ${file.location.toString(16).toUpperCase().padStart(6, '0')}: ${file.name}`);
+          offset += file.size;
+          if(offset & RomProcessingConstants.PAGE_SIZE) {
+            offset &= 0x7FFF;
+            console.log(`Page ${start.toString(16).toUpperCase().padStart(6, '0')} matched with SFX files 0 remaining`);
+            start += RomProcessingConstants.PAGE_SIZE;
+            page++;
+
+            if(offset) {
+              const newFile = new ChunkFile(file.name + "_2", file.size, file.location, Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!);
+              const end = file.rawData.length - offset;
+              newFile.rawData = file.rawData.slice(end);
+              newFile.size = newFile.rawData.length;
+              this.sfxFiles.unshift(newFile);
+              file.rawData = file.rawData.slice(0, end);
+              file.size -= offset;
+            }
+            remain = 0;
+            break;
+          } else {
+            remain -= file.size;
+          }
+        }
+        start += offset;
+        if(!this.sfxFiles.length) {
+          stripeSfx = false;
+        }
+
+      }
+      
+      this.currentUpper = this.config.memoryMode === MemoryMapMode.Lo || (page & 1) !== 0;
+      this.currentBank = this.config.memoryMode === MemoryMapMode.Lo ? page : (page >> 1);
       this.bestDepth = 0;
       this.bestRemain = remain;
       this.bestOffset = 0;
-      const start = page << 15; // 0x8000 per page
 
       // Pass 1: assembly preferred in upper banks
       this.testDepth(0, 0, remain, this.currentUpper);
@@ -61,7 +147,7 @@ export class RomLayout {
         const file = this.unmatchedFiles[this.bestResult[i++]];
         file.location = position;
         console.log(`  ${position.toString(16).toUpperCase().padStart(6, '0')}: ${file.name}`);
-        position += file.size || 0;
+        position += file.size;
       }
 
       console.log(`Page ${start.toString(16).toUpperCase().padStart(6, '0')} matched with ${this.bestDepth} files ${this.bestRemain} remaining`);
@@ -73,6 +159,8 @@ export class RomLayout {
       const names = this.unmatchedFiles.map(x => x.name).join('\r\n');
       throw new Error(`Unable to match ${this.unmatchedFiles.length} files\r\n${names}`);
     }
+
+    return page;
   }
 
   private testDepth(startIndex: number, depth: number, remain: number, asmMode: boolean): boolean {

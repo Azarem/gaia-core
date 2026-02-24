@@ -88,6 +88,7 @@ describe('BlockReader', () => {
   let crc: number;
   let blockLookup: Map<string, number> = new Map();
   let romWriter: RomWriter;
+  let pageCount: number;
   //let moduleLookup: Map<string, ChunkFile[]> = new Map();
   //let moduleList = ['jp-viper', 'title-enhanced'];
 
@@ -260,6 +261,7 @@ describe('BlockReader', () => {
 
     it('should be able to calculate sizes before layout', async () => {
       for (const asm of chunkFiles) {
+        if(asm.compressed === true) asm.compressed = false;
         ChunkFileUtils.calculateSize(asm);
       }
       for (const asm of chunkFiles) {
@@ -270,7 +272,7 @@ describe('BlockReader', () => {
 
     it('should organize the files into a ROM layout', async () => {
       // Assign locations
-      const layout = new RomLayout(chunkFiles);
+      const layout = new RomLayout(chunkFiles, reader._root);
       
       const preLayoutJson = JSON.stringify({
         files: layout.unmatchedFiles.map(x => ({
@@ -281,7 +283,7 @@ describe('BlockReader', () => {
         })),
       }, null, 2);
 
-      layout.organize();
+      pageCount = layout.organize();
 
       const postLayoutJson = JSON.stringify({
         files: chunkFiles.filter(x => x.size > 0).sort((a, b) => a.location - b.location).map(x => ({
@@ -341,6 +343,8 @@ describe('BlockReader', () => {
   describe('Writing process', () => {
     it('Should be able to write the ROM', async () => {
 
+      romWriter.allocate(pageCount);
+
       expect(romWriter.outBuffer).toBeDefined();
 
       // Write all files
@@ -352,17 +356,17 @@ describe('BlockReader', () => {
       romWriter.writeEntryPoints(asmFiles);
       romWriter.writeChecksum();
 
-      await saveFileAsBinary(`${OUT_PATH}/GaiaLabs.smc`, romWriter.outBuffer);
+      await saveFileAsBinary(`${OUT_PATH}/GaiaLabs.smc`, romWriter.outBuffer!);
     });
 
     it('Should be able to pass validation checks', async () => {
-      const header = romWriter.outBuffer.subarray(0xFFB0, 0xFFB0 + 6);
+      const header = romWriter.outBuffer!.subarray(0xFFB0, 0xFFB0 + 6);
       expect(header).toEqual(new Uint8Array(Buffer.from('01JG  ')));
 
-      const title = romWriter.outBuffer.subarray(0xFFB0 + 16, 0xFFB0 + 16 + 21);
+      const title = romWriter.outBuffer!.subarray(0xFFB0 + 16, 0xFFB0 + 16 + 21);
       expect(title).toEqual(new Uint8Array(Buffer.from('GAIALABS             ')));
 
-      const crc = crc32_buffer(romWriter.outBuffer);
+      const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
       expect(crc).toEqual(-439823203);
       //1.41

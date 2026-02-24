@@ -67,7 +67,6 @@ export class TypeParser {
       fixedSize = parseInt(typeName.substring(startIx + 1, typeName.length - 1), 10);
     }
 
-
     // Check string types
     const stringType = this._stringTypes[fixedTypeName];
     if (stringType) {
@@ -75,7 +74,7 @@ export class TypeParser {
     }
 
     // Parse raw values
-    const mType = this.tryParseMemberType(typeName);
+    const mType = this.tryParseMemberType(fixedTypeName);
     if (mType !== null) {
       switch (mType) {
         case MemberType.Byte:
@@ -89,7 +88,7 @@ export class TypeParser {
         case MemberType.Location:
           return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Location);
         case MemberType.Binary:
-          return this.parseBinary();
+          return this.parseBinary(fixedSize);
         case MemberType.Code:
           return this.parseCode(reg!);
         default:
@@ -97,9 +96,9 @@ export class TypeParser {
       }
     }
 
-    const parentType = this._blockReader._root.structs[typeName];
+    const parentType = this._blockReader._root.structs[fixedTypeName];
     if (!parentType) {
-      throw new Error(`Unknown type: ${typeName}`);
+      throw new Error(`Unknown type: ${fixedTypeName}`);
     }
 
     const delimiter = parentType.delimiter;
@@ -127,7 +126,7 @@ export class TypeParser {
 
         // Match discriminator to type
         const matchedStruct = Object.values(this._blockReader._root.structs).find(
-          x => x.parent === typeName && x.discriminator === desc
+          x => x.parent === fixedTypeName && x.discriminator === desc
         );
         targetType = matchedStruct || parentType; // Default to parent if no match is found
       }
@@ -193,17 +192,18 @@ export class TypeParser {
       : this._romDataReader.readUShort();
   }
 
-  private parseBinary(): Uint8Array {
+  private parseBinary(size: number): Uint8Array {
     // Store old position for length calculation
     const startPosition = this._romDataReader.position;
+
+    //Calculate length if it is not provided
+    let len = 0;
 
     // Advance the reader until we reach the end of the section
     do {
       this._romDataReader.position++;
-    } while (this._blockReader.partCanContinue());
-
-    // Length is determined by the new position relative to the old
-    const len = this._romDataReader.position - startPosition;
+      len++;
+    } while (len !== size && this._blockReader.partCanContinue());
 
     // Create buffer for the raw bytes
     const outBuffer = new Uint8Array(len);
@@ -238,7 +238,7 @@ export class TypeParser {
       if (!adrs.isROM) return adrs;
   
       // Convert address to ROM location
-      loc = adrs.toInt();
+      loc = adrs.toLocation();
     }
 
 

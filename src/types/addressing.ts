@@ -12,6 +12,7 @@ export enum AddressType {
   Address = 'Address',
   WBank = 'WBank',
   Relative = 'Relative',
+  WRelative = 'WRelative',
   Location = 'Location'
 }
 
@@ -31,6 +32,11 @@ export enum MemoryMapMode {
   Lo = 'Lo',
   Hi = 'Hi',
   ExHi = 'ExHi'
+}
+
+export enum CpuMode {
+  Slow = 'Slow',
+  Fast = 'Fast'
 }
 
 /**
@@ -100,16 +106,24 @@ export class Address {
   //   return AddressSpace.ROM;
   // }
 
-  public toInt(): number {
+  public toLocation(): number {
     if(this.mode === MemoryMapMode.Lo) return ((this.bank & 0x3F) << 15) | (this.offset & 0x7FFF);
     if(this.mode === MemoryMapMode.Hi || (this.bank & Address.FAST_BANK_FLAG)) return ((this.bank & 0x3F) << 16) | (this.offset & 0xFFFF);
     return (this.bank === 0x3E) ? (this.offset + 0x13D0000) : (this.bank === 0x3F) ? (this.offset + 0x13E0000) 
       : ((((this.bank & 0x3F) << 16) | (this.offset & 0xFFFF)) + 0x1000000);
   }
 
-  public static fromInt(value: number, mode: MemoryMapMode): Address {
-    if(mode === MemoryMapMode.Lo) return new Address((value >> 15) & 0xFF, (value & 0x7FFF) | 0x8000, mode);
-    if(mode === MemoryMapMode.Hi || (value & Address.FAST_BANK_FLAG)) return new Address((value >> 16) & 0xFF, value & 0xFFFF, mode);
+  public static fromLocation(value: number, mode: MemoryMapMode, cpuMode: CpuMode): Address {
+    let bankFlag = cpuMode === CpuMode.Fast ? Address.FAST_BANK_FLAG : 0;
+    if(mode === MemoryMapMode.Lo) {
+      return new Address((value >> 15) & 0x7F | bankFlag, (value & 0x7FFF) | 0x8000, mode);
+    }
+    if(mode === MemoryMapMode.Hi) {
+      if((value & RomProcessingConstants.PAGE_SIZE) === 0) bankFlag = 0xC0
+      return new Address((value >> 16) & 0x7F | bankFlag, value & 0xFFFF, mode);
+    }
+    ///TODO: Handle ExHi mode
+    if(value & Address.FAST_BANK_FLAG) return new Address((value >> 16) & 0xFF, value & 0xFFFF, mode);
     if(value >= 0x13D0000 && value < 0x13E0000) return new Address(0x3E, value - 0x13D0000, mode);
     if(value >= 0x13E0000 && value < 0x13F0000) return new Address(0x3F, value - 0x13E0000, mode);
     return new Address((value >> 16) & 0x7F, value & 0xFFFF, mode);
@@ -123,8 +137,12 @@ export class Address {
     return (value >> 16) & 0x7F;  
   }
 
+  public toInt(): number {
+    return (this.bank << 16) | this.offset;
+  }
+
   public toString(): string {
-    return ((this.bank << 16) | this.offset).toString(16).toUpperCase().padStart(6, '0');
+    return this.toInt().toString(16).toUpperCase().padStart(6, '0');
   }
 
   public static typeFromCode(code: string): AddressType {
