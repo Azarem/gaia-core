@@ -28,7 +28,16 @@ export class CopCommandProcessor {
    * Parses a COP command based on its definition
    */
   public parseCopCommand(copDef: CopDef, operands: unknown[]): void {
-    for (const partStr of copDef.parts) {
+    for (let partStr of copDef.parts) {
+      let bank : number | null = null;
+
+      //Trim the end for bank hints
+      const bankHintIx = partStr.indexOf('$')
+      if(bankHintIx > 0) {
+        bank = parseInt(partStr.substring(bankHintIx + 1), 16);
+        partStr = partStr.substring(0, bankHintIx);
+      }
+
       // Use the first character to determine the address type (for pointers)
       const addrType = Address.typeFromCode(partStr[0]);
       const isPtr = addrType !== AddressType.Unknown;
@@ -51,7 +60,7 @@ export class CopCommandProcessor {
         this._romDataReader.position += this.getMemberTypeSize(memberType);
         operands.push(label);
       } else {
-        operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType));
+        operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank));
       }
 
     }
@@ -87,7 +96,8 @@ export class CopCommandProcessor {
     partStr: string,
     isPtr: boolean,
     referenceType: string,
-    addrType: AddressType
+    addrType: AddressType,
+    bank: number | null
   ): unknown {
     switch (memberType) {
       case MemberType.Byte:
@@ -95,7 +105,7 @@ export class CopCommandProcessor {
       case MemberType.Word:
         return new Word(this._romDataReader.readUShort());
       case MemberType.Offset:
-        return this.createCopLocation(this._romDataReader.readUShort(), null, partStr, isPtr, referenceType, addrType);
+        return this.createCopLocation(this._romDataReader.readUShort(), bank, partStr, isPtr, referenceType, addrType);
       case MemberType.Address:
         return this.createCopLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), partStr, isPtr, referenceType, addrType);
       default:

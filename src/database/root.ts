@@ -41,6 +41,7 @@ export interface DbRoot {
   structs: Record<string, DbStruct>;
   stringTypes: Record<string, DbStringType>;
   stringDelimiters: string[];
+  stringDelimiterLookup: Record<string, DbStringType>;
   //stringCharLookup: Record<string, DbStringType>;
   files: DbFile[];
   config: DbConfig;
@@ -177,6 +178,8 @@ export class DbRootUtils {
       }
     }
 
+    const stringDelimiterLookup = {} as Record<string, DbStringType>;
+    const stringDelimiterList = [];
     const stringLookup = Object.entries(module.strings).reduce((acc, x) => {
       const stringType = x[1];
       const name = x[0];
@@ -188,7 +191,10 @@ export class DbRootUtils {
         acc[y[0]] = new DbStringDictionary({...y[1], name: y[0]});
         return acc;
       }, {} as Record<string, DbStringDictionary>);
-      acc[name] = new DbStringType({...stringType, name, commands, dictionaries});
+      const st = new DbStringType({...stringType, name, commands, dictionaries});
+      acc[name] = st;
+      stringDelimiterLookup[st.delimiter] = st;
+      stringDelimiterList.push(st.delimiter);
       return acc;
     }, {} as Record<string, DbStringType>);
 
@@ -262,7 +268,8 @@ export class DbRootUtils {
       //   return acc;
       // }, {} as Record<string, DbStringType>),
       stringTypes: stringLookup,
-      stringDelimiters: Object.values(stringLookup).map((x) => x.delimiter),
+      stringDelimiters: stringDelimiterList,
+      stringDelimiterLookup,
       // stringCharLookup: Object.values(stringLookup).reduce((acc, x) => {
       //   acc[x.delimiter] = x;
       //   return acc;
@@ -341,7 +348,7 @@ export class DbRootUtils {
     }
   }
 
-  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) : Promise<void> {
+  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) : Promise<ChunkFile[]> {
     var sourceFiles: ChunkFile[] = [];
     for(const path of inPath) {
       sourceFiles = await this.applyFolder(root, path, sourceFiles);
@@ -350,6 +357,8 @@ export class DbRootUtils {
     const romWriter = new RomWriter(root, 'TEST', 'TEST');
     const outData = await romWriter.repack(sourceFiles);
     await saveFileAsBinary(outPath, outData);
+
+    return sourceFiles;
   }
 
 

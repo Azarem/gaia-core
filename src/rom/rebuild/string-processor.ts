@@ -13,14 +13,13 @@ export class StringProcessor {
   private readonly context: AssemblerContext;
   private readonly root: DbRoot;
   private readonly stringCharLookup: Record<string, DbStringType>;
+  private readonly testRegex: RegExp;
 
   constructor(context: AssemblerContext) {
     this.context = context;
     this.root = context.root;
-    this.stringCharLookup = Object.values(this.root.stringTypes).reduce((acc, x) => {
-      acc[x.delimiter] = x;
-      return acc;
-    }, {} as Record<string, DbStringType>);
+    this.stringCharLookup = context.root.stringDelimiterLookup;
+    this.testRegex = new RegExp(/^[0-9A-F]+$/i);
   }
 
   public consumeString(typeChar: string): void {
@@ -57,8 +56,7 @@ export class StringProcessor {
     this.totalSize = 0;
     this.fixedStr = fixedStr;
 
-    const stringType = this.stringCharLookup[typeChar];
-    this.processString(str, stringType);
+    this.processString(str, typeChar);
   }
 
   private flushBuffer(stringType: DbStringType, wrap: boolean = false): void {
@@ -80,24 +78,18 @@ export class StringProcessor {
     }
   }
 
-  private processString(str: string, stringType: DbStringType): void {
+  private processString(str: string, typeChar: string): void {
+    const stringType = this.stringCharLookup[typeChar];
+    const dictionary = stringType.dictionaryLookup;
     const cmdLookup = stringType.commands;
     //const charMap = stringType.characterMap;
     //const shift = this.getShiftUp(stringType.shiftType);
-    const dictLookup = stringType.dictionaries;
     let lastCmd: DbStringCommand | null = null;
 
-    for(const dictionary of Object.values(dictLookup)) {
-      for(let ix = 0; ix < dictionary.entries.length; ix++) {
-        const entry = dictionary.entries[ix];
-        const six = str.indexOf(entry);
-        if(six >= 0) {
-          if(dictionary.command !== undefined){
-            str = str.replace(entry, `[${dictionary.command}:${(ix + dictionary.base).toString(16).toUpperCase()}]`);
-          } else {
-            str = str.replace(entry, `[${(ix + dictionary.base).toString(16).toUpperCase()}]`);
-          }
-        }
+    for(const entry of dictionary) {
+      let index : number;
+      while((index = str.indexOf(entry.text)) >= 0) {
+        str = str.substring(0, index) + `[${(entry.id).toString(16).toUpperCase()}]` + str.substring(index + entry.text.length);
       }
     }
 
@@ -107,14 +99,6 @@ export class StringProcessor {
       if (c === '[') {
         const endIx = str.indexOf(']', x + 1);
         const splitChars = [':', ',', ' '];
-        const subStr = str.substring(x + 1, endIx);
-        let ix = subStr.length === 2 ? parseInt(subStr, 16) : NaN;
-        
-        if(!isNaN(ix)) {
-          this.memBuffer.push(ix);
-          x = endIx;
-          continue;
-        }
 
         const parts = str.substring(x + 1, endIx)
           .split(new RegExp(`[${splitChars.join('')}]`))
@@ -136,6 +120,14 @@ export class StringProcessor {
           lastCmd = cmd;
           this.memBuffer.push(cmd.id);
           this.processStringCommand(cmd, stringType, parts);
+          continue;
+        }
+
+        //Direct values for doctionary commands etc
+        if(parts.length === 1 && this.testRegex.test(parts[0])) {
+          const value = parseInt(parts[0], 16);
+          if(value < 0x100) this.memBuffer.push(value);
+          else this.memBuffer.push((value >> 8) & 0xFF, value & 0xFF);
           continue;
         }
       }

@@ -71,6 +71,7 @@ export class DbStringType {
   public layers: DbStringLayer[];
   public greedyTerminator: boolean;
   public dictionaries: Record<string, DbStringDictionary>;
+  public dictionaryLookup: { text: string, id: number }[];
 
   constructor(data: Partial<DbStringType>) {
     this.name = data.name ?? '';
@@ -86,6 +87,10 @@ export class DbStringType {
       acc[x.id] = x;
       return acc;
     }, {} as Record<number, DbStringCommand>);
+    this.dictionaryLookup = Object.values(this.dictionaries)
+      .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: (y.command << 8) | (y.base + ix) })))
+      //.map((y, z) => ({ text: y.entries[z], id: (y.command << 8) | (y.base + z) }))
+      .sort((a, b) => b.text.length - a.text.length);
 
     if(!this.name) throw new Error('Name is required');
     if(!this.delimiter) throw new Error('Delimiter is required');

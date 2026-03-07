@@ -159,7 +159,7 @@ describe('BlockReader', () => {
     
     it('should be able to pass multiple sources of truth', async () => {
       for(const block of asmFiles) {
-        const truthPath = `${TRUTH_PATH}/asm/${block.group ? (block.group + '/') : ''}${block.name}.asm`;
+        const truthPath = `${TRUTH_PATH}/asm/${block.group ? (block.group + '/') : ''}${block.scene ? (block.scene + '/') : ''}${block.name}.asm`;
         console.log(`Validating content of "${truthPath}"`);
         const truthContent = await readFileAsText(truthPath);
         expect(block.textData).toEqual(truthContent);
@@ -294,12 +294,14 @@ describe('BlockReader', () => {
         })),
       }, null, 2);
       
+      await saveFileAsText(`${OUT_PATH}/postlayout.json`, postLayoutJson);
+      await saveFileAsText(`${OUT_PATH}/prelayout.json`, preLayoutJson);
+      
       const truthPreLayout = (await readFileAsText(`${TRUTH_PATH}/prelayout.json`)).replace(/\r/g, '');
       expect(preLayoutJson).toEqual(truthPreLayout);
-
+      
       const truthPostLayout = (await readFileAsText(`${TRUTH_PATH}/postlayout.json`)).replace(/\r/g, '');
       expect(postLayoutJson).toEqual(truthPostLayout);
-      //await saveFileAsText(`${OUT_PATH}/postlayout.json`, postLayoutJson);
     });
 
     it("Should be able to rebase assembly code", async () => {
@@ -368,7 +370,7 @@ describe('BlockReader', () => {
 
       const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
-      expect(crc).toEqual(-439823203);
+      expect(crc).toEqual(670557398);
       //1.41
       //expect(crc).toEqual(-1345057874);
     });
