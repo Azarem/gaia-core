@@ -10,6 +10,7 @@ export class DbStringCommand {
   public types: string[];
   public delimiter?: number;
   public halt: boolean;
+  public dictionary?: DbStringDictionary;
 
   constructor(data: Partial<DbStringCommand>) {
     this.id = data.id ?? undefined;
@@ -17,6 +18,7 @@ export class DbStringCommand {
     this.types = data.types ?? [];
     this.delimiter = data.delimiter ?? undefined;
     this.halt = data.halt ?? false;
+    this.dictionary = data.dictionary ?? undefined;
 
     if(!this.id && this.id !== 0) throw new Error('Id is required');
     if(!this.name) throw new Error('Name is required');
@@ -28,7 +30,10 @@ export class DbStringCommand {
  * Converted from GaiaLib/Database/DbStringLayer.cs
  */
 export interface DbStringLayer {
-  base: number;
+  base?: number;
+  range?: number;
+  on?: number;
+  shift?: string;
   map: string[];
 }
 
@@ -64,8 +69,6 @@ export class DbStringType {
   public name: string;
   public delimiter: string;
   public terminator: number;
-  public shiftType?: string;
-  public characterMap: string[];
   public commands: Record<string, DbStringCommand>;
   public commandLookup: Record<number, DbStringCommand>;
   public layers: DbStringLayer[];
@@ -77,8 +80,6 @@ export class DbStringType {
     this.name = data.name ?? '';
     this.delimiter = data.delimiter ?? '';
     this.terminator = data.terminator ?? 0;
-    this.shiftType = data.shiftType ?? undefined;
-    this.characterMap = data.characterMap;
     this.commands = data.commands ?? {};
     this.layers = data.layers ?? [];
     this.greedyTerminator = data.greedyTerminator ?? false;
@@ -95,7 +96,7 @@ export class DbStringType {
     if(!this.name) throw new Error('Name is required');
     if(!this.delimiter) throw new Error('Delimiter is required');
     if(!this.terminator && this.terminator !== 0) throw new Error('Terminator is required');
-    if(!this.characterMap) throw new Error('Character map is required');
+    if(!this.layers.length) throw new Error('Layers are required');
   }
 }
 

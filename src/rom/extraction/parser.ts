@@ -140,7 +140,7 @@ export class TypeParser {
 
         // Parse each member of the struct
         for (let i = 0; i < memberCount; i++) {
-          parts[i] = this.parseType(types[i], null, depth + 1, bank);
+          parts[i] = this.parseType(types[i], reg, depth + 1, bank);
         }
 
         // Advance (hide) discriminator if it is the last member
@@ -155,7 +155,8 @@ export class TypeParser {
       // SHOULD only happen for the inventory sprite map
       let checkPosition = startPosition;
       while (++checkPosition < this._romDataReader.position) {
-        if (this._referenceManager.containsStruct(checkPosition)) {
+        const struct = this._referenceManager.tryGetStruct(checkPosition)
+        if (struct.found && struct.chunkType !== 'Code') {
           this._romDataReader.position = checkPosition;
           break;
         }

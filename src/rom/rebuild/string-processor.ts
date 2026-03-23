@@ -1,4 +1,4 @@
-import { DbRoot, DbStringCommand, DbStringType, DbStringTypeUtils } from '../../database';
+import { DbRoot, DbStringCommand, DbStringLayer, DbStringType, DbStringTypeUtils } from '../../database';
 import { MemberType, StringMarker } from '../../types';
 import type { AssemblerContext } from './assembler-context';
 
@@ -14,6 +14,7 @@ export class StringProcessor {
   private readonly root: DbRoot;
   private readonly stringCharLookup: Record<string, DbStringType>;
   private readonly testRegex: RegExp;
+  private inShift: boolean = false;
 
   constructor(context: AssemblerContext) {
     this.context = context;
@@ -82,6 +83,8 @@ export class StringProcessor {
     const stringType = this.stringCharLookup[typeChar];
     const dictionary = stringType.dictionaryLookup;
     const cmdLookup = stringType.commands;
+    let currentLayer = stringType.layers[0];
+
     //const charMap = stringType.characterMap;
     //const shift = this.getShiftUp(stringType.shiftType);
     let lastCmd: DbStringCommand | null = null;
@@ -134,9 +137,26 @@ export class StringProcessor {
 
       lastCmd = null;
 
-      // Process extra string layers
-      if (this.applyLayers(c, stringType)) {
-        continue;
+      // Process string layers
+      let found = false;
+      for (const layer of stringType.layers) {
+        for (let i = 0, len = layer.map.length; i < len; i++) {
+          const v = layer.map[i];
+          if (c === v) {
+            //Toggle layers if they are not active
+            if(layer.on !== undefined && currentLayer !== layer) {
+              this.memBuffer.push(layer.on);
+              currentLayer = layer;
+            }
+
+            let value = i + (layer.base ?? 0);
+            if(layer.shift) value = DbStringTypeUtils.getShiftUp(layer.shift)(value);
+            this.memBuffer.push(value);
+            found = true; 
+            break;
+          }
+        }
+        if(found) break;
       }
     }
 
@@ -148,32 +168,6 @@ export class StringProcessor {
     }
 
     this.flushBuffer(stringType, true);
-  }
-
-  private applyLayers(c: string, stringType: DbStringType): boolean {
-    if (this.applyMap(c, stringType.characterMap, DbStringTypeUtils.getShiftUp(stringType.shiftType))) {
-      return true;
-    }
-
-    if (stringType.layers) {
-      for (const layer of stringType.layers) {
-        if (this.applyMap(c, layer.map, x => x + layer.base)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private applyMap(c: string, map: string[], shift: (x: number) => number): boolean {
-    for (let i = 0, len = map.length; i < len; i++) {
-      const v = map[i];
-      if (v != null && c === v[0]) {
-        this.memBuffer.push(shift(i));
-        return true;
-      }
-    }
-    return false;
   }
 
   private processStringCommand(cmd: DbStringCommand, stringType: DbStringType, parts: string[]): void {

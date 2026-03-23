@@ -188,7 +188,11 @@ export class DbRootUtils {
         return acc;
       }, {} as Record<string, DbStringCommand>);
       const dictionaries = Object.entries(stringType.dictionaries ?? {}).reduce((acc, y) => {
-        acc[y[0]] = new DbStringDictionary({...y[1], name: y[0]});
+        const dictionary = new DbStringDictionary({...y[1], name: y[0]});
+        acc[y[0]] = dictionary;
+        if(dictionary.command !== undefined) {
+          commands[dictionary.command] = new DbStringCommand({id: dictionary.command, name: dictionary.name, dictionary: dictionary});
+        }
         return acc;
       }, {} as Record<string, DbStringDictionary>);
       const st = new DbStringType({...stringType, name, commands, dictionaries});

@@ -8,7 +8,7 @@ import {
   ChunkFileUtils, 
   TableEntry 
 } from '../../types';
-import type { DbStringType, DbStringCommand } from '../../database';
+import type { DbStringType, DbStringCommand, DbStringLayer } from '../../database';
 import { DbStringTypeUtils } from '../../database';
 import type { StringWrapper } from '../../types';
 import type { BlockReader } from './blocks';
@@ -30,7 +30,9 @@ export class StringReader {
   }
 
   private resolveCommand(cmd: DbStringCommand, builder: string[]): void {
-    if (cmd.types && cmd.types.length > 0) {
+    if(cmd.dictionary) {
+      builder.push(cmd.dictionary.entries[this._romDataReader.readByte() - (cmd.dictionary.base ?? 0)]);
+    } else if (cmd.types && cmd.types.length > 0) {
       builder.push(`[${cmd.name}`);
 
       let first = true;
@@ -87,8 +89,8 @@ export class StringReader {
     const dictionaries = stringType.dictionaries;
     const builder: string[] = [];
     const strLoc = this._romDataReader.position;
-    const map = stringType.characterMap;
     const terminator = stringType.terminator;
+    let currentLayer = stringType.layers[0];
 
     do {
       const c = this._romDataReader.readByte();
@@ -117,9 +119,28 @@ export class StringReader {
           }
         }
         if(!found) {
-          const index = DbStringTypeUtils.getShiftDown(stringType.shiftType)(c);
-          if (index >= 0 && index < map.length) {
-            builder.push(map[index]);
+          for(const layer of stringType.layers) {
+            if(layer.on !== undefined) {
+              if(c === layer.on) {
+                currentLayer = layer;
+                found = true;
+                break;
+              }
+            } else if(c >= (layer.base ?? 0) && c <= (layer.range ?? 255)){
+              let index = c - (layer.base ?? 0);
+              if(index >= 0 && index < layer.map.length) {
+                if(layer.shift) index = DbStringTypeUtils.getShiftDown(layer.shift)(index);
+                builder.push(layer.map[index]);
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+        if(!found) {
+          const index = currentLayer.shift ? DbStringTypeUtils.getShiftDown(currentLayer.shift)(c) : c - (currentLayer.base ?? 0);
+          if (index >= 0 && index < currentLayer.map.length) {
+            builder.push(currentLayer.map[index]);
           } else {
             // Fallback for unknown characters
             builder.push(`[${c.toString(16).toUpperCase()}]`);
