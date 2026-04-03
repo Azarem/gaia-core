@@ -933,7 +933,6 @@ export async function summaryFromSupabaseByProject(projectName?: string): Promis
           version,
           isActive,
           notes,
-          fileTypes,
           baseRomId,
           gameRomBranchId,
           createdAt,
