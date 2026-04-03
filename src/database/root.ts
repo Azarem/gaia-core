@@ -28,6 +28,7 @@ import { DbGameRomModule } from './modules';
 import { BlockWriter } from '../rom/extraction/writer';
 import { BlockReader } from '../rom/extraction/blocks';
 import { RomWriter } from '../rom/rebuild/writer';
+import { DbHeader } from './header';
 
 /**
  * Main database root class
@@ -43,6 +44,7 @@ export interface DbRoot {
   stringDelimiters: string[];
   stringDelimiterLookup: Record<string, DbStringType>;
   //stringCharLookup: Record<string, DbStringType>;
+  headers: DbHeader[];
   files: DbFile[];
   config: DbConfig;
   blocks: DbBlock[];
@@ -53,7 +55,7 @@ export interface DbRoot {
   opCodes: Record<number, OpCode>;
   opLookup: Record<string, OpCode[]>;
   addrLookup: Record<string, DbAddressingMode>;
-  compression: ICompressionProvider;
+  compression?: ICompressionProvider;
   baseRomFiles?: ChunkFile[];
   projectFiles?: ChunkFile[];
   groups: Record<string, DbGroup>;
@@ -75,38 +77,38 @@ export class DbRootUtils {
   //   writeIndented: true
   // };
 
-  /**
-   * Load database from a single file
-   */
-  // public static async fromFile(dbFilePath: string): Promise<DbRoot> {
-  //   return await readJsonFile<DbRoot>(dbFilePath);
+  // /**
+  //  * Load database from a single file
+  //  */
+  // // public static async fromFile(dbFilePath: string): Promise<DbRoot> {
+  // //   return await readJsonFile<DbRoot>(dbFilePath);
+  // // }
+
+  // public static async fromFolder(folderPath: string, systemPath: string) : Promise<DbRoot> {
+  //   return this.fromGameModule(await this.gameModuleFromFolder(folderPath, systemPath));
   // }
 
-  public static async fromFolder(folderPath: string, systemPath: string) : Promise<DbRoot> {
-    return this.fromGameModule(await this.gameModuleFromFolder(folderPath, systemPath));
-  }
-
-  /**
-   * Load database from folder structure
-   */
-  public static async gameModuleFromFolder(folderPath: string, systemPath: string): Promise<DbGameRomModule> {
-    return {
-      mnemonics: await readJsonFile<Record<number, string>>(`${folderPath}/mnemonics.json`),
-      overrides: await readJsonFile<Record<number, Record<string, any>>>(`${folderPath}/overrides.json`),
-      rewrites: await readJsonFile<Record<string, number>>(`${folderPath}/rewrites.json`),
-      blocks: await readJsonFile<Record<string, Record<string, Partial<DbBlock>>>>(`${folderPath}/blocks.json`),
-      files: await readJsonFile<Record<string, Record<string, Record<string, Partial<DbFile>>>>>(`${folderPath}/files.json`),
-      config: await readJsonFile<DbConfig>(`${folderPath}/config.json`),
-      labels: await readJsonFile<DbLabel[]>(`${folderPath}/labels.json`),
-      structs: await readJsonFile<Record<string, DbStruct>>(`${folderPath}/structs.json`),
-      copdef: await readJsonFile<Record<string, Partial<CopDef>>>(`${folderPath}/copdef.json`),
-      addrModes: await readJsonFile<Record<string, Partial<DbAddressingMode>>>(`${systemPath}/addressingModes.json`),
-      strings: await readJsonFile<Record<string, Partial<DbStringType>>>(`${folderPath}/stringTypes.json`),
-      transforms: await readJsonFile<Record<string, Partial<DbTransform>[]>>(`${folderPath}/transforms.json`),
-      groups: await readJsonFile<Record<string, Partial<DbGroup>>>(`${folderPath}/groups.json`),
-      fileTypes: await readJsonFile<Record<string, Partial<DbFileType>>>(`${folderPath}/fileTypes.json`),
-    }
-  }
+  // /**
+  //  * Load database from folder structure
+  //  */
+  // public static async gameModuleFromFolder(folderPath: string, systemPath: string): Promise<DbGameRomModule> {
+  //   return {
+  //     mnemonics: await readJsonFile<Record<number, string>>(`${folderPath}/mnemonics.json`),
+  //     overrides: await readJsonFile<Record<number, Record<string, any>>>(`${folderPath}/overrides.json`),
+  //     rewrites: await readJsonFile<Record<string, number>>(`${folderPath}/rewrites.json`),
+  //     blocks: await readJsonFile<Record<string, Record<string, Partial<DbBlock>>>>(`${folderPath}/blocks.json`),
+  //     files: await readJsonFile<Record<string, Record<string, Record<string, Partial<DbFile>>>>>(`${folderPath}/files.json`),
+  //     config: await readJsonFile<DbConfig>(`${folderPath}/config.json`),
+  //     labels: await readJsonFile<DbLabel[]>(`${folderPath}/labels.json`),
+  //     structs: await readJsonFile<Record<string, DbStruct>>(`${folderPath}/structs.json`),
+  //     copdef: await readJsonFile<Record<string, Partial<CopDef>>>(`${folderPath}/copdef.json`),
+  //     addrModes: await readJsonFile<Record<string, Partial<DbAddressingMode>>>(`${systemPath}/addressingModes.json`),
+  //     strings: await readJsonFile<Record<string, Partial<DbStringType>>>(`${folderPath}/stringTypes.json`),
+  //     transforms: await readJsonFile<Record<string, Partial<DbTransform>[]>>(`${folderPath}/transforms.json`),
+  //     groups: await readJsonFile<Record<string, Partial<DbGroup>>>(`${folderPath}/groups.json`),
+  //     fileTypes: await readJsonFile<Record<string, Partial<DbFileType>>>(`${folderPath}/fileTypes.json`),
+  //   }
+  // }
 
   public static fromGameModule(module: DbGameRomModule): DbRoot {
     // Build lookup tables
@@ -156,7 +158,7 @@ export class DbRootUtils {
       const groupData = x[1];
       const groupName = x[0];
 
-      const scenes = Object.entries(groupData.scenes).reduce((acc, y) => {
+      const scenes = Object.entries(groupData.scenes ?? {}).reduce((acc, y) => {
         const sceneData = y[1];
         const sceneName = y[0];
         const scene = new DbScene({...sceneData, name: sceneName });
@@ -179,7 +181,7 @@ export class DbRootUtils {
     }
 
     const stringDelimiterLookup = {} as Record<string, DbStringType>;
-    const stringDelimiterList = [];
+    const stringDelimiterList: string[] = [];
     const stringLookup = Object.entries(module.strings).reduce((acc, x) => {
       const stringType = x[1];
       const name = x[0];
@@ -230,17 +232,18 @@ export class DbRootUtils {
 
     const cfg = module.config;
 
-    const compression = cfg.compression ? CompressionAlgorithms[cfg.compression]() : null;
+    const compression = cfg.compression ? CompressionAlgorithms[cfg.compression]() : undefined;
 
     // Build the database root
     const root: DbRoot = {
+      headers: module.headers.map((h) => new DbHeader(h)),
       mnemonics: module.mnemonics,
       overrides: module.overrides,
       rewrites: module.rewrites,
-      labels: module.labels.reduce((acc, x) => {
-        acc[x.location] = x.label;
-        return acc;
-      }, {} as Record<number, string>),
+      labels: module.labels, //.reduce((acc, x) => {
+      //   acc[x.location] = x.label;
+      //   return acc;
+      // }, {} as Record<number, string>),
       structs: structLookup,
       blocks: blocksArray.sort((a, b) => {
         const orderA = a.order ?? 0;
@@ -293,40 +296,34 @@ export class DbRootUtils {
 
   public static async applyFolder(root: DbRoot, folderPath: string, sourceFiles: ChunkFile[] = []) : Promise<ChunkFile[]> {
     const chunkFiles = sourceFiles;
-    const folderEntries = await listDirectory(folderPath);
+    const folderEntries = await listDirectory(folderPath, { recursive: true });
     for(const entry of folderEntries) {
-      if(entry.isDirectory) {
-        await this.applyFolder(root, entry.path, chunkFiles);
+      if(!entry.isFile || !entry.extension) continue; //await this.applyFolder(root, entry.path, chunkFiles);
+    
+      const type = root.fileExtLookup[entry.extension];
+      if(!type) continue;
+
+      const existing = chunkFiles.find(x => x.name === entry.name && x.type.type === type.type);
+      const chunkFile = existing ?? new ChunkFile(entry.name, 0, 0, type);
+
+      if(chunkFile.type.type === 'Assembly' || chunkFile.type.type === 'Patch') {
+        const chunkData = await readFileAsText(entry.path);
+        chunkFile.textData = chunkData;
+        chunkFile.size = chunkData.length;
       } else {
-        const index = entry.name.indexOf('.');
-        if(!index) continue;
-        const name = entry.name.substring(0, index);
-        const extension = entry.name.substring(index + 1);
-        const type = root.fileExtLookup[extension];
-        if(!type) continue;
-
-        const existing = chunkFiles.find(x => x.name === name && x.type.type === type.type);
-        const chunkFile = existing ?? new ChunkFile(name, 0, 0, type);
-
-        if(chunkFile.type.type === 'Assembly' || chunkFile.type.type === 'Patch') {
-          const chunkData = await readFileAsText(entry.path);
-          chunkFile.textData = chunkData;
-          chunkFile.size = chunkData.length;
-        } else {
-          const chunkData = await readFileAsBinary(entry.path);
-          chunkFile.rawData = chunkData;
-          chunkFile.size = chunkData.length;
+        const chunkData = await readFileAsBinary(entry.path);
+        chunkFile.rawData = chunkData;
+        chunkFile.size = chunkData.length;
+      }
+      if(!existing){
+        const sourceFile = root.files.find(x => x.name === entry.name && x.type === type.type);
+        if (sourceFile) {
+          chunkFile.location = sourceFile.start;
+          chunkFile.upper = sourceFile.upper;
+          chunkFile.compressed = sourceFile.compressed;
         }
-        if(!existing){
-          const sourceFile = root.files.find(x => x.name === name && x.type === type.type);
-          if (sourceFile) {
-            chunkFile.location = sourceFile.start;
-            chunkFile.upper = sourceFile.upper;
-            chunkFile.compressed = sourceFile.compressed;
-          }
-          
-          chunkFiles.push(chunkFile);
-        }
+        
+        chunkFiles.push(chunkFile);
       }
     }
     return chunkFiles;
@@ -358,7 +355,7 @@ export class DbRootUtils {
       sourceFiles = await this.applyFolder(root, path, sourceFiles);
     }
 
-    const romWriter = new RomWriter(root, 'TEST', 'TEST');
+    const romWriter = new RomWriter(root);
     const outData = await romWriter.repack(sourceFiles);
     await saveFileAsBinary(outPath, outData);
 

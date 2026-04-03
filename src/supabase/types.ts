@@ -45,7 +45,7 @@ export interface FileBaseRaw extends Omit<FileBaseData, 'data'> {
 export interface PlatformBranchData extends BranchBaseData {
   platformId: string;
   addressingModes: any | null; // JSON field
-  instructionSet: any | null; // JSON field
+  headers: any | null; // JSON field
   vectors: any | null; // JSON field
   types: any | null; // JSON field
   platform: PlatformData;
@@ -61,10 +61,15 @@ export interface GameRomBranchData extends BranchBaseData {
   config: any | null; // JSON field
   files: any | null; // JSON field
   blocks: any | null; // JSON field
-  fixups: any | null; // JSON field
+  rewrites: any | null; // JSON field
+  transforms: any | null; // JSON field
+  overrides: any | null; // JSON field
+  labels: any | null; // JSON field
+  mnemonics: any | null; // JSON field
+  fileTypes: any | null; // JSON field
+  groups: any | null; // JSON field
   strings: any | null; // JSON field
   structs: any | null; // JSON field
-  scenes: any | null; // JSON field
   gameRom: GameRomData;
   platformBranch: PlatformBranchData;
 }
@@ -101,6 +106,24 @@ export interface GameData {
   name: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DeveloperData {
+  id: string;
+  name: string;
+  meta: any | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameDeveloperData {
+  id: string;
+  gameId: string;
+  developerId: string;
+  createdAt: string;
+  updatedAt: string;
+  game: GameData;
+  developer: DeveloperData;
 }
 
 export interface RegionData {

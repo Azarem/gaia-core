@@ -1,0 +1,404 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../client"
+}
+
+datasource db {
+  provider = "postgresql"
+  //url      = env("DATABASE_URL")
+}
+
+model Platform {
+  id   String @id @default(cuid())
+  name String @unique
+  meta Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches PlatformBranch[]
+  games    Game[]
+}
+
+model PlatformBranch {
+  id       String   @id @default(cuid())
+  name     String?
+  version  Int?
+  isActive Boolean?
+  notes    String[]
+
+  platform   Platform @relation(fields: [platformId], references: [id])
+  platformId String
+
+  addressingModes Json?
+  vectors         Json?
+  types           Json?
+  headers         Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  gameBranches GameRomBranch[]
+
+  @@unique([platformId, name])
+  @@unique([platformId, version])
+  @@unique([platformId, isActive])
+  @@index([platformId, name])
+  @@index([platformId, version])
+  @@index([platformId, isActive])
+  @@index([platformId])
+}
+
+model Developer {
+  id   String @id @default(cuid())
+  name String @unique
+  meta Json?
+
+  games GameDeveloper[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Region {
+  id   String @id @default(cuid())
+  name String @unique
+  meta Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roms GameRom[]
+}
+
+model Game {
+  id   String @id @default(cuid())
+  name String
+  meta Json?
+
+  platform   Platform @relation(fields: [platformId], references: [id])
+  platformId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  gameRoms   GameRom[]
+  baseRoms   BaseRom[]
+  projects   Project[]
+  developers GameDeveloper[]
+
+  @@unique([platformId, name])
+  @@index([platformId])
+}
+
+model GameDeveloper {
+  id String @id @default(cuid())
+
+  game   Game?   @relation(fields: [gameId], references: [id])
+  gameId String?
+
+  developer   Developer? @relation(fields: [developerId], references: [id])
+  developerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+  @@index([developerId])
+}
+
+model GameRom {
+  id   String @id @default(cuid())
+  crc  Int    @unique
+  meta Json?
+
+  game   Game   @relation(fields: [gameId], references: [id])
+  gameId String
+
+  region   Region? @relation(fields: [regionId], references: [id])
+  regionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches  GameRomBranch[]
+  baseRoms  BaseRom[]
+  artifacts GameRomArtifact[]
+
+  @@index([gameId])
+  @@index([regionId])
+}
+
+model GameRomBranch {
+  id       String   @id @default(cuid())
+  name     String?
+  version  Int?
+  isActive Boolean?
+  notes    String[]
+
+  gameRom   GameRom @relation(fields: [gameRomId], references: [id])
+  gameRomId String
+
+  platformBranch   PlatformBranch @relation(fields: [platformBranchId], references: [id])
+  platformBranchId String
+
+  coplib     Json?
+  config     Json?
+  files      Json?
+  blocks     Json?
+  labels     Json?
+  rewrites   Json?
+  mnemonics  Json?
+  overrides  Json?
+  transforms Json?
+  strings    Json?
+  structs    Json?
+  groups     Json?
+  fileTypes  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  baseBranches BaseRomBranch[]
+  artifacts    GameRomBranchArtifact[]
+
+  @@unique([gameRomId, name])
+  @@unique([gameRomId, version])
+  @@unique([gameRomId, isActive])
+  @@index([gameRomId, name])
+  @@index([gameRomId, version])
+  @@index([gameRomId, isActive])
+  @@index([gameRomId])
+  @@index([platformBranchId])
+}
+
+model GameRomArtifact {
+  id      String @id @default(cuid())
+  name    String
+  type    String
+  version Int?
+  crc     Int?
+  meta    Json?
+
+  gameRom   GameRom @relation(fields: [gameRomId], references: [id])
+  gameRomId String
+
+  isText Boolean @default(false)
+  text   String?
+  data   Bytes?
+
+  branchArtifacts GameRomBranchArtifact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gameRomId, name, version])
+  @@index([gameRomId, crc])
+  @@index([gameRomId])
+  @@index([crc])
+}
+
+model GameRomBranchArtifact {
+  id String @id @default(cuid())
+
+  branch   GameRomBranch @relation(fields: [branchId], references: [id])
+  branchId String
+
+  artifact   GameRomArtifact @relation(fields: [artifactId], references: [id])
+  artifactId String
+
+  @@unique([branchId, artifactId])
+  @@index([branchId])
+  @@index([artifactId])
+}
+
+model BaseRom {
+  id   String @id @default(cuid())
+  name String @unique
+
+  game   Game   @relation(fields: [gameId], references: [id])
+  gameId String
+
+  gameRom   GameRom @relation(fields: [gameRomId], references: [id])
+  gameRomId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches BaseRomBranch[]
+  files    BaseRomFile[]
+  projects Project[]
+
+  @@unique([gameId, name])
+  @@index([gameId, name])
+  @@index([gameId])
+  @@index([gameRomId])
+}
+
+model BaseRomBranch {
+  id       String   @id @default(cuid())
+  name     String?
+  version  Int?
+  isActive Boolean?
+  notes    String[]
+
+  baseRom   BaseRom @relation(fields: [baseRomId], references: [id])
+  baseRomId String
+
+  gameRomBranch   GameRomBranch @relation(fields: [gameRomBranchId], references: [id])
+  gameRomBranchId String
+
+  projectBranches ProjectBranch[]
+
+  files BaseRomBranchFile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([baseRomId, name])
+  @@unique([baseRomId, version])
+  @@unique([baseRomId, isActive])
+  @@index([baseRomId, name])
+  @@index([baseRomId, version])
+  @@index([baseRomId, isActive])
+  @@index([baseRomId])
+  @@index([gameRomBranchId])
+}
+
+model BaseRomFile {
+  id      String @id @default(cuid())
+  name    String
+  type    String
+  version Int?
+  crc     Int?
+  meta    Json?
+
+  baseRom   BaseRom @relation(fields: [baseRomId], references: [id])
+  baseRomId String
+
+  isText Boolean @default(false)
+  text   String?
+  data   Bytes?
+
+  branchFiles BaseRomBranchFile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([baseRomId, name, version])
+  @@index([baseRomId, crc])
+  @@index([baseRomId])
+  @@index([crc])
+}
+
+model BaseRomBranchFile {
+  id String @id @default(cuid())
+
+  branch   BaseRomBranch @relation(fields: [branchId], references: [id])
+  branchId String
+
+  file   BaseRomFile @relation(fields: [fileId], references: [id])
+  fileId String
+
+  @@unique([branchId, fileId])
+  @@index([branchId])
+  @@index([fileId])
+}
+
+model Project {
+  id   String @id @default(cuid())
+  name String @unique
+  meta Json?
+
+  game   Game   @relation(fields: [gameId], references: [id])
+  gameId String
+
+  baseRom   BaseRom @relation(fields: [baseRomId], references: [id])
+  baseRomId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  files    ProjectFile[]
+  branches ProjectBranch[]
+
+  @@index([name])
+  @@index([gameId])
+  @@index([baseRomId])
+}
+
+model ProjectBranch {
+  id       String   @id @default(cuid())
+  name     String?
+  version  Int?
+  isActive Boolean?
+  notes    String[]
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  baseRomBranch   BaseRomBranch @relation(fields: [baseRomBranchId], references: [id])
+  baseRomBranchId String
+
+  modules Json[]
+  files   ProjectBranchFile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, name])
+  @@unique([projectId, version])
+  @@unique([projectId, isActive])
+  @@index([projectId, name])
+  @@index([projectId, version])
+  @@index([projectId, isActive])
+  @@index([projectId])
+  @@index([baseRomBranchId])
+}
+
+model ProjectFile {
+  id      String  @id @default(cuid())
+  name    String
+  type    String
+  module  String?
+  version Int?
+  crc     Int?
+  meta    Json?
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  isText Boolean @default(false)
+  text   String?
+  data   Bytes?
+
+  branchFiles ProjectBranchFile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, module, name, version])
+  @@unique([projectId, module, crc])
+  @@index([projectId, crc])
+  @@index([projectId])
+}
+
+model ProjectBranchFile {
+  id String @id @default(cuid())
+
+  branch   ProjectBranch @relation(fields: [branchId], references: [id])
+  branchId String
+
+  file   ProjectFile @relation(fields: [fileId], references: [id])
+  fileId String
+
+  @@unique([branchId, fileId])
+  @@index([branchId])
+  @@index([fileId])
+}

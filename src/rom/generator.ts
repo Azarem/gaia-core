@@ -1,41 +1,43 @@
 import { crc32_buffer } from '../utils';
-import { DbRoot, DbEntryPoint, DbRootUtils } from '../database';
-import { ChunkFile, ChunkFileUtils } from '../types/files';
-import { BinType } from '../types/resources';
+import { DbRoot, DbRootUtils } from '../database';
+import { ChunkFile } from '../types/files';
 import { summaryFromSupabaseByProject } from '../supabase/rom-loader';
 import { BlockReader, BlockWriter } from './extraction';
-import { RomLayout, RomProcessor, Assembler, RomWriter } from './rebuild';
+import { RomWriter } from './rebuild';
+import { fromSupabaseByProject } from '../supabase/rom-loader';
 
 export class RomGenerator {
   //private readonly patchFiles: ChunkFile[] = [];
   public readonly projectName?: string;
-  public crc: number = 0;
-  public branchId: string = '';
+  public crc: number;
+  //public branchId: string;
   //private chunkFiles: ChunkFile[] = [];
   //private asmFiles: ChunkFile[] = [];
   public dbRoot: DbRoot = {} as DbRoot;
   private sourceData: Uint8Array = new Uint8Array();
 
-  constructor(projectName?: string) {
+  constructor(projectName?: string, crc?: number) {
     this.projectName = projectName;
+    this.crc = crc ?? 0;
   }
 
-  public async initialize(){
-    var projectData = await summaryFromSupabaseByProject(this.projectName);
-    this.crc = projectData.baseRomBranch.gameRomBranch.gameRom.crc;
-    this.branchId = projectData.id;
-  }
-
-  // public async validateAndDownload(sourceData: Uint8Array){
-  //   const calc = crc32_buffer(sourceData);
-  //   if (calc === this.crc) {
-  //       //Initialize database
-  //       this.dbRoot = await DbRootUtils.fromSupabaseProject(this.projectName, this.branchId);
-  //       this.sourceData = sourceData;
-  //       return true;
-  //   }
-  //   return false;
+  // public async initialize(){
+  //   var projectData = await summaryFromSupabaseByProject(this.projectName);
+  //   this.crc = projectData.baseRomBranch.gameRomBranch.gameRom.crc;
+  //   this.branchId = projectData.id;
   // }
+
+  public async validateAndDownload(sourceData: Uint8Array){
+    const calc = crc32_buffer(sourceData);
+    if (calc === this.crc) {
+        //Initialize database
+        const moduleData = await fromSupabaseByProject(this.projectName);
+        this.dbRoot = DbRootUtils.fromGameModule(moduleData);
+        this.sourceData = sourceData;
+        return true;
+    }
+    return false;
+  }
 
   public async generateProject(modules: string[], manualFiles?: ChunkFile[], unshiftManualFiles: boolean = false): Promise<Uint8Array> {
     if(!this.dbRoot) throw new Error('Database not initialized');
@@ -71,29 +73,34 @@ export class RomGenerator {
     if(!unshiftManualFiles) {
       for(const file of manualFiles ?? []) this.applyPatchFile(file, chunkFiles, asmFiles, patchFiles);
     }
+
+    const romWriter = new RomWriter(this.dbRoot);
+    const outRom = await romWriter.repack(chunkFiles);
     
-    this.assembleCodeFromText(asmFiles);
+    // this.assembleCodeFromText(asmFiles);
 
-    //Apply code patches
-    RomProcessor.applyPatches(asmFiles, patchFiles);
+    // //Apply code patches
+    // RomProcessor.applyPatches(asmFiles, patchFiles);
 
-    //Calculate sizes
-    for (const asm of chunkFiles) ChunkFileUtils.calculateSize(asm);
+    // //Calculate sizes
+    // for (const asm of chunkFiles) ChunkFileUtils.calculateSize(asm);
 
-    //Assign locations
-    const layout = new RomLayout(chunkFiles, this.dbRoot);
-    const pages = layout.organize();
+    // //Assign locations
+    // const layout = new RomLayout(chunkFiles, this.dbRoot);
+    // const pages = layout.organize();
 
-    //Rebase assemblies
-    for (const file of asmFiles) ChunkFileUtils.rebase(file);
+    // //Rebase assemblies
+    // for (const file of asmFiles) ChunkFileUtils.rebase(file);
 
-    this.generateAsmIncludeLookups(asmFiles);
+    // this.generateAsmIncludeLookups(asmFiles);
 
-    //Generate block lookup
-    const blockLookup = new Map<string, number>();
-    for (const f of chunkFiles) blockLookup.set(f.name.toUpperCase(), f.location);
+    // //Generate block lookup
+    // const blockLookup = new Map<string, number>();
+    // for (const f of chunkFiles) blockLookup.set(f.name.toUpperCase(), f.location);
 
-    const outRom = await this.writeRom(blockLookup, chunkFiles, asmFiles, pages);
+    // const outRom = await this.writeRom(blockLookup, chunkFiles, asmFiles, pages);
+
+
     return outRom;
   }
 
@@ -107,47 +114,45 @@ export class RomGenerator {
 
       //ChunkFile.group is the module name
       if(chunkFile.group){
-        let modArray: ChunkFile[];
-        if(!moduleLookup.has(chunkFile.group)) moduleLookup.set(chunkFile.group, modArray = []);
-        else modArray = moduleLookup.get(chunkFile.group)!;
-        //Add chunk file to module array
-        modArray!.push(chunkFile);
+        let modArray = moduleLookup.get(chunkFile.group);
+        if(!modArray) moduleLookup.set(chunkFile.group, modArray = []);
+        modArray.push(chunkFile);
       } else this.applyPatchFile(chunkFile, chunkFiles, asmFiles, patchFiles); //If chunk file is not part of a group, apply it now
     }
 
     return moduleLookup;
   }
 
-  //Assemble code from script text
-  private assembleCodeFromText(asmFiles: ChunkFile[]){
-    for(const block of asmFiles) {
-      const assembler = new Assembler(this.dbRoot, block.textData!);
-      const { blocks, includes, reqBank } = assembler.parseAssembly();
-      block.parts = blocks;
-      block.includes = includes;
-      block.bank = reqBank ?? undefined;
-    }
-  }
+  // //Assemble code from script text
+  // private assembleCodeFromText(asmFiles: ChunkFile[]){
+  //   for(const block of asmFiles) {
+  //     const assembler = new Assembler(this.dbRoot, block.textData!);
+  //     const { blocks, includes, reqBank } = assembler.parseAssembly();
+  //     block.parts = blocks;
+  //     block.includes = includes;
+  //     block.bank = reqBank ?? undefined;
+  //   }
+  // }
 
-  // Build include lookup map per asm file
-  private generateAsmIncludeLookups(asmFiles: ChunkFile[]){
-    for (const f of asmFiles) {
-      const includeBlocks = asmFiles
-        .filter(x => f.includes?.has(x.name.toUpperCase()))
-        .flatMap(x => x.parts!)
-        .filter(b => !!b.label);
+  // // Build include lookup map per asm file
+  // private generateAsmIncludeLookups(asmFiles: ChunkFile[]){
+  //   for (const f of asmFiles) {
+  //     const includeBlocks = asmFiles
+  //       .filter(x => f.includes?.has(x.name.toUpperCase()))
+  //       .flatMap(x => x.parts!)
+  //       .filter(b => !!b.label);
 
-      f.includeLookup = new Map();
+  //     f.includeLookup = new Map<string, AsmBlock>();
 
-      for (const b of includeBlocks) {
-        if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
-      }
+  //     for (const b of includeBlocks) {
+  //       if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
+  //     }
 
-      for (const b of (f.parts || []).filter(x => !!x.label)) {
-        if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
-      }
-    }
-  }
+  //     for (const b of f.parts) {
+  //       if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
+  //     }
+  //   }
+  // }
 
   public applyPatchFile(chunkFile: ChunkFile, chunkFiles: ChunkFile[], asmFiles: ChunkFile[], patchFiles: ChunkFile[]): void {
     console.log(`Processing patch: ${chunkFile.name}`);
@@ -173,24 +178,24 @@ export class RomGenerator {
     }
   }
 
-  private async writeRom(blockLookup: Map<string, number>, chunkFiles: ChunkFile[], asmFiles: ChunkFile[], pages: number){
-    //Create rom writer
-    const romWriter = new RomWriter(this.dbRoot, "GAIALABS", "01JG  ");
+  // private async writeRom(blockLookup: Map<string, number>, chunkFiles: ChunkFile[], asmFiles: ChunkFile[], pages: number){
+  //   //Create rom writer
+  //   const romWriter = new RomWriter(this.dbRoot);
 
-    romWriter.allocate(pages);
+  //   romWriter.allocate(pages);
 
-    // Write all files
-    for (const file of chunkFiles) await romWriter.writeFile(file, blockLookup);
+  //   // Write all files
+  //   for (const file of chunkFiles) await romWriter.writeFile(file, blockLookup);
 
-    //Write header
-    romWriter.writeHeader();
+  //   //Write header
+  //   romWriter.writeHeaders();
 
-    //Write entry points
-    romWriter.writeEntryPoints(asmFiles);
+  //   //Write entry points
+  //   //romWriter.writeEntryPoints(asmFiles);
 
-    //Write checksum
-    romWriter.writeChecksum();
+  //   //Write checksum
+  //   romWriter.writeChecksum();
 
-    return romWriter.outBuffer;
-  }
+  //   return romWriter.outBuffer;
+  // }
 }

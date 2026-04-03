@@ -5,12 +5,13 @@ export class DbOverride {
   value: number;
 
   constructor(values: Partial<DbOverride>) {
-    this.location = values.location ?? 0;
-    this.register = values.register ?? '';
-    this.value = values.value ?? undefined;
+    if(typeof values.value !== 'number') throw new Error('Value is required');
+    if(typeof values.location !== 'number') throw new Error('Location is required');
+    if(!values.register) throw new Error('Register is required');
 
-    if(!this.location) throw new Error('Location is required');
-    if(!this.register) throw new Error('Register is required');
-    if(this.value === undefined) throw new Error('Value is required');
+    this.location = values.location;
+    this.register = values.register;
+    this.value = values.value;
+
   }
 } 

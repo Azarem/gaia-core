@@ -1,6 +1,6 @@
 import { DbRoot, DbStringCommand, DbStringLayer, DbStringType, DbStringTypeUtils } from '../../database';
 import { MemberType, StringMarker } from '../../types';
-import type { AssemblerContext } from './assembler-context';
+import type { Assembler } from './assembler';
 
 /**
  * String processor for assembly parsing
@@ -10,13 +10,13 @@ export class StringProcessor {
   private memBuffer: number[] = [];
   private totalSize: number = 0;
   private fixedStr: number = 0;
-  private readonly context: AssemblerContext;
+  private readonly context: Assembler;
   private readonly root: DbRoot;
   private readonly stringCharLookup: Record<string, DbStringType>;
   private readonly testRegex: RegExp;
   private inShift: boolean = false;
 
-  constructor(context: AssemblerContext) {
+  constructor(context: Assembler) {
     this.context = context;
     this.root = context.root;
     this.stringCharLookup = context.root.stringDelimiterLookup;
@@ -57,7 +57,7 @@ export class StringProcessor {
     this.totalSize = 0;
     this.fixedStr = fixedStr;
 
-    this.processString(str, typeChar);
+    this.processString(str!, typeChar);
   }
 
   private flushBuffer(stringType: DbStringType, wrap: boolean = false): void {

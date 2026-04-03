@@ -25,6 +25,7 @@ import {
   ProjectBranchFileRaw,
   BaseRomBranchFileRaw
 } from './types';
+import { DbGameRomModule } from '../database';
 
 /**
  * Load ROM data from Supabase using a BaseRomBranch ID
@@ -74,7 +75,13 @@ export async function fromSupabaseById(baseRomBranchId: string): Promise<BaseRom
           config,
           files,
           blocks,
-          fixups,
+          rewrites,
+          transforms,
+          overrides,
+          labels,
+          mnemonics,
+          fileTypes,
+          groups,
           strings,
           structs,
           createdAt,
@@ -87,7 +94,6 @@ export async function fromSupabaseById(baseRomBranchId: string): Promise<BaseRom
             notes,
             platformId,
             addressingModes,
-            instructionSet,
             vectors,
             types,
             createdAt,
@@ -223,9 +229,15 @@ export async function fromSupabaseByName(
           coplib,
           files,
           blocks,
-          fixups,
+          rewrites,
+          transforms,
+          overrides,
+          labels,
+          mnemonics,
+          fileTypes,
           strings,
           structs,
+          groups,
           createdAt,
           updatedAt,
           platformBranch:PlatformBranch!inner(
@@ -236,8 +248,8 @@ export async function fromSupabaseByName(
             notes,
             platformId,
             addressingModes,
-            instructionSet,
             vectors,
+            headers,
             types,
             createdAt,
             updatedAt
@@ -484,7 +496,7 @@ async function loadProjectFiles(
  * });
  * ```
  */
-export async function fromSupabaseByProject(projectName?: string, branchId?: string): Promise<ProjectPayload> {
+export async function fromSupabaseByProject(projectName?: string, branchId?: string): Promise<DbGameRomModule> {
   const startTime = performance.now();
   let branchQueryTime = 0;
   let fileQueryTime = 0;
@@ -552,7 +564,13 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
             coplib,
             files,
             blocks,
-            fixups,
+            rewrites,
+            transforms,
+            overrides,
+            labels,
+            mnemonics,
+            fileTypes,
+            groups,
             strings,
             structs,
             createdAt,
@@ -587,8 +605,8 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
               notes,
               platformId,
               addressingModes,
-              instructionSet,
               vectors,
+              headers,
               types,
               createdAt,
               updatedAt,
@@ -653,7 +671,25 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
     
     console.log('Project ROM load stats:', stats);
     
-    return payload;
+    const module : DbGameRomModule = {
+      mnemonics: baseRomBranch.gameRomBranch.mnemonics,
+      overrides: baseRomBranch.gameRomBranch.overrides,
+      rewrites: baseRomBranch.gameRomBranch.rewrites,
+      blocks: baseRomBranch.gameRomBranch.blocks,
+      files: baseRomBranch.gameRomBranch.files,
+      config: baseRomBranch.gameRomBranch.config,
+      labels: baseRomBranch.gameRomBranch.labels,
+      structs: baseRomBranch.gameRomBranch.structs,
+      copdef: baseRomBranch.gameRomBranch.coplib,
+      strings: baseRomBranch.gameRomBranch.strings,
+      transforms: baseRomBranch.gameRomBranch.transforms,
+      groups: baseRomBranch.gameRomBranch.groups,
+      fileTypes: baseRomBranch.gameRomBranch.fileTypes,
+      addrModes: baseRomBranch.gameRomBranch.platformBranch.addressingModes,
+      headers: baseRomBranch.gameRomBranch.platformBranch.headers,
+    };
+
+    return module;
     
   } catch (error) {
     if (error instanceof SupabaseFromError) {
@@ -698,7 +734,13 @@ export async function fromSupabaseByGameRom(gameName?: string, regionName?: stri
         config,
         files,
         blocks,
-        fixups,
+        rewrites,
+        transforms,
+        overrides,
+        labels,
+        mnemonics,
+        fileTypes,
+        groups,
         strings,
         structs,
         createdAt,
@@ -733,7 +775,7 @@ export async function fromSupabaseByGameRom(gameName?: string, regionName?: stri
           isActive,
           platformId,
           addressingModes,
-          instructionSet,
+          headers,
           vectors,
           types,
           createdAt,
@@ -893,6 +935,7 @@ export async function summaryFromSupabaseByProject(projectName?: string): Promis
           version,
           isActive,
           notes,
+          fileTypes,
           baseRomId,
           gameRomBranchId,
           createdAt,

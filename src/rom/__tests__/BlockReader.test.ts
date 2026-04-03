@@ -87,6 +87,7 @@ describe('BlockReader', () => {
   let patchFiles: ChunkFile[] = [];
   let crc: number;
   let blockLookup: Map<string, number> = new Map();
+  let masterLookup: Map<string, number> = new Map();
   let romWriter: RomWriter;
   let pageCount: number;
   //let moduleLookup: Map<string, ChunkFile[]> = new Map();
@@ -105,7 +106,7 @@ describe('BlockReader', () => {
 
     reader = new BlockReader(data, dbRoot);
     writer = new BlockWriter(reader);
-    romWriter = new RomWriter(dbRoot, "GAIALABS", "01JG  ");
+    romWriter = new RomWriter(dbRoot);
   }, 30000);
 
   describe('BlockReader class', () => {
@@ -240,8 +241,9 @@ describe('BlockReader', () => {
   
   describe('Assembler process', () => {
     it('Should be able to assemble code', () => {
+      const conditionFiles = asmFiles.map(x => x.name);
       for(const block of asmFiles) {
-        const assembler = new Assembler(reader._root, block.textData!);
+        const assembler = new Assembler(reader._root, block.textData!, conditionFiles);
         const { blocks, includes, reqBank } = assembler.parseAssembly();
         block.parts = blocks;
         block.includes = includes;
@@ -326,8 +328,11 @@ describe('BlockReader', () => {
           if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
         }
 
-        for (const b of (f.parts || []).filter(x => !!x.label)) {
-          if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
+        for (const b of f.parts!) {
+          if (b.label) {
+            masterLookup.set(b.label.toUpperCase(), b.location);
+            f.includeLookup.set(b.label.toUpperCase(), b);
+          }
         }
       }
 
@@ -354,9 +359,7 @@ describe('BlockReader', () => {
         await romWriter.writeFile(file, blockLookup);
       }
 
-      romWriter.writeHeader();
-      romWriter.writeEntryPoints(asmFiles);
-      romWriter.writeChecksum();
+      romWriter.writeHeaders(masterLookup);
 
       await saveFileAsBinary(`${OUT_PATH}/GaiaLabs.smc`, romWriter.outBuffer!);
     });
@@ -366,11 +369,11 @@ describe('BlockReader', () => {
       expect(header).toEqual(new Uint8Array(Buffer.from('01JG  ')));
 
       const title = romWriter.outBuffer!.subarray(0xFFB0 + 16, 0xFFB0 + 16 + 21);
-      expect(title).toEqual(new Uint8Array(Buffer.from('GAIALABS             ')));
+      expect(title).toEqual(new Uint8Array(Buffer.from('ILLUSION OF GAIA USA ')));
 
       const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
-      expect(crc).toEqual(579195593);
+      expect(crc).toEqual(-2063150219);
       //1.41
       //expect(crc).toEqual(-1345057874);
     });

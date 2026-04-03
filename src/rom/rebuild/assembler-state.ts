@@ -1,6 +1,6 @@
 import { Byte, RomProcessingConstants, AsmBlock, Op } from '../../types';
 import { DbRoot, DbStruct, OpCode } from '../../database';
-import type { AssemblerContext } from './assembler-context';
+import type { Assembler } from './assembler';
 import { AsmReader } from '../extraction/asm';
 
 /**
@@ -17,9 +17,9 @@ export class AssemblerState {
   private dataOffset: number;
   private readonly memberTypes: string[] | null;
   private currentType: string | null;
-  private readonly context: AssemblerContext;
+  private readonly context: Assembler;
 
-  constructor(context: AssemblerContext, structType: string | null = null, saveDelimiter: boolean = false) {
+  constructor(context: Assembler, structType: string | null = null, saveDelimiter: boolean = false) {
     this.context = context;
     this.root = context.root;
 
@@ -83,7 +83,7 @@ export class AssemblerState {
     const location = parseInt(hex, 16);
 
     this.context.blocks.push(this.context.currentBlock = new AsmBlock(location));
-    this.context.blockIndex++;
+    //this.context.blockIndex++;
   }
 
   private static doMath(operand: string): string {
@@ -140,14 +140,18 @@ export class AssemblerState {
       mnemonic
     );
 
-    // Add block to assembler
+    // const conditionBlock = this.context.conditionBlock;
+    // if(conditionBlock) {
+    //   conditionBlock.objList.push(newBlock);
+    // } else {
     this.context.blocks.push(newBlock);
+    //}
 
     // Set as current
     this.context.currentBlock = newBlock;
 
     // Increment current block index
-    this.context.blockIndex++;
+    //this.context.blockIndex++;
 
     // Remove label marker
     if (labelChar === ':') {
@@ -306,7 +310,7 @@ export class AssemblerState {
         // No operand instructions
         if (!operand) {
           const opCode = codes.find(x => this.root.addrLookup[x.mode].size === 1);
-          this.context.currentBlock!.objList.push(new Op (opCode, 0, [], 1));
+          this.context.currentBlock!.objList.push(new Op (opCode!, 0, [], 1));
           this.context.currentBlock!.size++;
           continue;
         }

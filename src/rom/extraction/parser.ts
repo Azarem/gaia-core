@@ -226,7 +226,7 @@ export class TypeParser {
     let adrs: Address;
     let loc: number;
     if(addrType === AddressType.Location) {
-      loc = offset | (bank << 16);
+      loc = offset | (bank! << 16);
       //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
     } else {
       // Bank cannot be null, instead use bank from current position

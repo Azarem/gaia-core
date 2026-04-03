@@ -4,6 +4,6 @@ export * from './processor';
 export * from './writer';
 export * from './assembler';
 export * from './assembler-state';
-export * from './assembler-context';
+//export * from './assembler-context';
 export * from './string-processor';
 export * from './sorted-map';

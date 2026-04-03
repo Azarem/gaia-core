@@ -411,8 +411,9 @@ export class BlockReader {
    * Creates assembly ChunkFiles from DbBlocks (enriched with parts)
    */
   private createChunkFilesFromDbBlocks(): void {
+    const fileType = Object.values(this._root.fileTypes).find(x => x.isBlock)!;
     for (const block of this._root.blocks) {
-      const chunkFile = createChunkFileFromDbBlock(block, Object.values(this._root.fileTypes).find(x => x.isBlock), this._root.config.memoryMode);
+      const chunkFile = createChunkFileFromDbBlock(block, fileType, this._root.config.memoryMode);
       this._enrichedChunks.push(chunkFile);
     }
   }

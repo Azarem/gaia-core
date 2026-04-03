@@ -12,10 +12,11 @@ import {
   Long,
   TypedNumber
 } from '../../types';
-import { DbEntryPoint, DbRoot } from '../../database';
+import { DbEntryPoint, DbHeader, DbRoot } from '../../database';
 import { RomProcessor as RebuildProcessor } from './processor';
 import { Op } from '../../types/assembly';
 import { CpuMode, MemoryMapMode } from '../../types/addressing';
+//import { ConditionBlock } from './assembler';
 /**
  * ROM writer (binary)
  * Converted from ext/GaiaLib/Rom/Rebuild/RomWriter.cs (subset: binary write only)
@@ -24,30 +25,20 @@ export class RomWriter {
   public bpsPath?: string;
   public outBuffer?: Uint8Array;
   private romSize? : number;
-  //public readonly entryPoints: DbEntryPoint[];
-  public readonly cartName: string;
-  public readonly makerCode: string;
   public readonly root: DbRoot;
 
-  constructor(root: DbRoot, cartName: string, makerCode: string) {
-    this.cartName = cartName;
-    this.makerCode = makerCode;
+  constructor(root: DbRoot) {
     this.root = root;
-    //this.entryPoints = entryPoints;
-    //There needs to be a way to determine the rom size and makeup
-    //this.outBuffer = new Uint8Array(0x400000);
   }
 
   public async repack(files: ChunkFile[]): Promise<Uint8Array> {
     const processor = new RebuildProcessor(this);
-    await processor.repack(files);
+    const masterLookup = await processor.repack(files);
 
-    this.writeHeader();
-    this.writeEntryPoints(files.filter(x => !!x.parts));
-    this.writeChecksum();
+    this.writeHeaders(masterLookup);
 
     //await this.generatePatch();
-    return this.outBuffer;
+    return this.outBuffer!;
   }
 
   public allocate(pages: number): void {
@@ -64,45 +55,156 @@ export class RomWriter {
     this.outBuffer = new Uint8Array(target);
   }
 
-  public writeHeader(): void {
-    const buf = this.outBuffer!;
-    // Maker/game code at 0xFFB0
-    let pos = this.root.config.memoryMode === MemoryMapMode.Lo ? 0x7FB0 : 0xFFB0;
-    this.writeAscii(this.makerCode.padEnd(6, ' '), pos); pos += 6;
-    for (let i = 0; i < 10; i++) buf[pos++] = 0;
-    this.writeAscii(this.cartName.toUpperCase().padEnd(21, ' '), pos); pos += 21;
-    buf[pos++] = 0x20  // map mode
-      | (this.root.config.cpuMode === CpuMode.Fast ? 0x10 : 0x00)
-      | (this.root.config.memoryMode === MemoryMapMode.Hi ? 1 : this.root.config.memoryMode === MemoryMapMode.ExHi ? 5 : 0);
-    buf[pos++] = this.root.config.chipset; // chipset
-    buf[pos++] = this.romSize!; // ROM size
-    buf[pos++] = this.root.config.ramSize; // RAM size
-    buf[pos++] = 0x01; // country
-    buf[pos++] = 0x33; // dev id
-    buf[pos++] = 0x00; // version
+  public writeHeaders(masterLookup: Map<string, number>): void {
+    const values = this.prepareHeaderValues();
+    for (const header of this.root.headers) {
+      if(header.condition && !eval(header.condition)) continue;
+      this.writeHeader(header, values, masterLookup);
+    }
+    this.writeChecksum(values);
   }
 
-  public writeChecksum(): void {
-    const buf = this.outBuffer!;
-    let pos = this.root.config.memoryMode === MemoryMapMode.Lo ? 0x7FDC : 0xFFDC;
-    
-    // Not sure why this is needed, but it is
-    buf[pos] = 0xFF;
-    buf[pos + 1] = 0xFF;
-    buf[pos + 2] = 0;
-    buf[pos + 3] = 0;
+  public prepareHeaderValues(): any {
+    const values = { ...this.root.config } as any;
+    values.romSize = this.romSize;
+    values.checksum = 0;
+    values.compliment = 0xFFFF;
+    values.mapMode = 0x20 
+    | (values.cpuMode === CpuMode.Fast ? 0x10 : 0x00)
+    | (values.memoryMode === MemoryMapMode.Hi ? 1 : values.memoryMode === MemoryMapMode.ExHi ? 5 : 0);
+    return values;
+  }
 
-    // checksum
+
+  public writeHeader(header: DbHeader, values: any, masterLookup: Map<string, number>): void {
+    const buf = this.outBuffer!;
+    
+    let pos = new Address(header.bank, header.address, this.root.config.memoryMode).toLocation();
+
+    for (const part of header.parts) {
+      let type = part.type;
+      let value = part.value ?? values[part.name] ?? (type === 'string' ? '' : 0);
+      let size = part.size;
+
+      if(!size) {
+        if(!type) {
+          //Try to infer the type/size from the value
+          if(typeof value === 'string') throw new Error(`String size for ${part.name} is not specified`);
+          if(typeof value === 'number') {
+            if(value <= 0xFF) {
+              size = 1;
+              type = 'byte';
+            }
+            else {
+              size = 2;
+              type = 'word';
+            }
+          }
+        } else {
+          switch(type) {
+            case 'byte': size = 1; break;
+            case 'word': case 'entry': size = 2; break;
+            case 'string': throw new Error(`String size for ${part.name} is not specified`); break;
+            default: throw new Error(`Invalid type ${type} for ${part.name}`);
+          }
+        }
+      }
+
+      switch(part.type) {
+        case 'string':
+          value = value.toString();
+          value = value.length > size ? value.substring(0, size) : value.padEnd(size, ' ');
+          this.writeAscii(value, pos);
+          break;
+
+        case 'byte':
+          buf[pos] = value & 0xFF;
+          break;
+
+        case 'entry':
+          let location = 0;
+          if(typeof value === 'string') {
+            location = value === '' ? 0 : masterLookup.get(value.toUpperCase()) ?? 0;
+          } else if(typeof value === 'number') {
+            location = value;
+          }
+          value = location;
+
+        case 'word':
+          buf[pos] = value & 0xFF;
+          buf[pos + 1] = (value >> 8) & 0xFF;
+          break;
+
+      }
+
+      part.value = value;
+      part.size = size;
+      part.type = type;
+
+      pos += size;
+    }
+
+    // //let pos = this.root.config.memoryMode === MemoryMapMode.Lo ? 0x7FB0 : 0xFFB0;
+    // this.writeAscii(this.makerCode.padEnd(6, ' '), pos); 
+    // pos += 6;
+    // for (let i = 0; i < 10; i++) buf[pos++] = 0;
+    // this.writeAscii(this.cartName.toUpperCase().padEnd(21, ' '), pos); 
+    // pos += 21;
+    // buf[pos++] = 0x20  // map mode
+    //   | (this.root.config.cpuMode === CpuMode.Fast ? 0x10 : 0x00)
+    //   | (this.root.config.memoryMode === MemoryMapMode.Hi ? 1 : this.root.config.memoryMode === MemoryMapMode.ExHi ? 5 : 0);
+    // buf[pos++] = this.root.config.chipset; // chipset
+    // buf[pos++] = this.romSize!; // ROM size
+    // buf[pos++] = this.root.config.ramSize; // RAM size
+    // buf[pos++] = 0x01; // country
+    // buf[pos++] = 0x33; // dev id
+    // buf[pos++] = 0x00; // version
+  }
+
+  public writeChecksum(values: any): void {
+    const buf = this.outBuffer!;
+
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i];
 
-    // checksum at 0xFFDE
-    buf[pos + 2] = sum & 0xFF;
-    buf[pos + 3] = (sum >> 8) & 0xFF;
-    // complement at 0xFFDC
     const comp = ~sum;
-    buf[pos] = comp & 0xFF;
-    buf[pos + 1] = (comp >> 8) & 0xFF;
+
+    for(const header of this.root.headers) {
+      if(header.condition && !eval(header.condition)) continue;
+      let pos = new Address(header.bank, header.address, this.root.config.memoryMode).toLocation();
+      for(const part of header.parts) {
+        if(part.name === 'checksum') {
+          buf[pos] = sum & 0xFF;
+          buf[pos + 1] = (sum >> 8) & 0xFF;
+        } else if(part.name === 'compliment') {
+          buf[pos] = comp & 0xFF;
+          buf[pos + 1] = (comp >> 8) & 0xFF;
+        }
+        pos += part.size;
+      }
+    }
+  
+    // const buf = this.outBuffer!;
+    // let pos = new Address(0, 0xFFDC, this.root.config.memoryMode).toLocation();
+    
+    // //Zero out the checksum location
+    // buf[pos] = 0xFF;
+    // buf[pos + 1] = 0xFF;
+    // buf[pos + 2] = 0;
+    // buf[pos + 3] = 0;
+
+    // // checksum
+    // let sum = 0;
+    // for (let i = 0; i < buf.length; i++) sum += buf[i];
+
+    // // complement at 0xFFDC
+    // const comp = ~sum;
+    // buf[pos] = comp & 0xFF;
+    // buf[pos + 1] = (comp >> 8) & 0xFF;
+
+    // // checksum at 0xFFDE
+    // buf[pos + 2] = sum & 0xFF;
+    // buf[pos + 3] = (sum >> 8) & 0xFF;
   }
 
   // private async generatePatch(): Promise<void> {
@@ -181,7 +283,7 @@ export class RomWriter {
   //   }
   // }
 
-  public async writeFile(file: ChunkFile, _chunkLookup: Map<string, number>): Promise<number> {
+  public async writeFile(file: ChunkFile, fileLookup: Map<string, number>): Promise<number> {
     const start = file.location;
     let pos = start;
     const buf = this.outBuffer!;
@@ -225,7 +327,7 @@ export class RomWriter {
         }
         
         // Parse assembly parts
-        this.parseAssembly(file.parts, _chunkLookup, file.includeLookup!);
+        this.parseAssembly(file.parts, fileLookup, file.includeLookup!);
       }
     }
 
@@ -243,11 +345,7 @@ export class RomWriter {
    * Parse assembly blocks and write binary data to output buffer
    * Converted from ext/GaiaLib/Rom/Rebuild/RomWriter.cs ParseAssembly method
    */
-  private parseAssembly(
-    blocks: AsmBlock[], 
-    chunkLookup: Map<string, number>, 
-    includeLookup: Map<string, AsmBlock>
-  ): void {
+  private parseAssembly(blocks: AsmBlock[], fileLookup: Map<string, number>, includeLookup: Map<string, AsmBlock>): void {
     if (!blocks) {
       throw new Error('Assembly has not been parsed');
     }
@@ -255,8 +353,29 @@ export class RomWriter {
     const buf = this.outBuffer!;
 
     let bix = 0;
+    // let inCondition = false;
+    // let exitCondition = false;
 
     for (const block of blocks) {
+
+      // if(inCondition) {
+      //   if(block instanceof ConditionBlock) {
+      //     if(exitCondition) continue;
+      //     if(block.condition) {
+      //       if(!fileLookup.has(block.condition) && !includeLookup.has(block.condition)) continue;
+      //       exitCondition = true; //If condition passes, set exit flag
+      //     } else inCondition = false;
+      //   } else {
+      //     inCondition = false;
+      //     exitCondition = false;
+      //   }
+      // } else if(block instanceof ConditionBlock) {
+      //   inCondition = true;
+      //   exitCondition = false;
+      //   if(!fileLookup.has(block.condition) && !includeLookup.has(block.condition)) continue;
+      //   exitCondition = true;
+      // }
+
       let oldPos: number | null = null;
       let position = block.location; // Always start at block's absolute location
       
@@ -332,13 +451,13 @@ export class RomWriter {
 
             // Search local labels first
             const labelUpper = label.toUpperCase();
-            let target: AsmBlock | undefined;
+            let target: AsmBlock | null = null;
 
-            if (includeLookup.has(labelUpper)) {
-              target = includeLookup.get(labelUpper);
-              loc = target!.location;
-            } else if (chunkLookup.has(labelUpper)) {
-              loc = chunkLookup.get(labelUpper)!;
+            if(includeLookup.has(labelUpper)) {
+              target = includeLookup.get(labelUpper)!;
+              loc = target.location;
+            } else if(fileLookup.has(labelUpper)) {
+              loc = fileLookup.get(labelUpper)!;
             } else {
               // Handle direct hex values
               if (label.startsWith('#')) {
@@ -389,7 +508,7 @@ export class RomWriter {
 
             if (offset !== null) {
               loc += offset;
-            } else if (useMarker && target) {
+            } else if (useMarker && target instanceof AsmBlock) {
               let markerOffset = 0;
               for (const part of target.objList) {
                 if (this.isStringMarker(part)) {

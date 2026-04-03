@@ -1,0 +1,492 @@
+{
+  "Absolute": {
+    "shorthand": "abs",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "${0:X4}",
+    "parseRegex": "^\\$([A-Fa-f0-9]{4}|&[A-Za-z0-9-+_]+)$",
+    "instructions": {
+      "ADC": 109,
+      "AND": 45,
+      "ASL": 14,
+      "BIT": 44,
+      "CMP": 205,
+      "CPX": 236,
+      "CPY": 204,
+      "DEC": 206,
+      "EOR": 77,
+      "INC": 238,
+      "JMP": 76,
+      "JSR": 32,
+      "LDA": 173,
+      "LDX": 174,
+      "LDY": 172,
+      "LSR": 78,
+      "ORA": 13,
+      "PEA": 244,
+      "ROL": 46,
+      "ROR": 110,
+      "SBC": 237,
+      "STA": 141,
+      "STX": 142,
+      "STY": 140,
+      "STZ": 156,
+      "TRB": 28,
+      "TSB": 12
+    }
+  },
+  "AbsoluteIndexedX": {
+    "shorthand": "abs_x",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "${0:X4}, X",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s?[Xx]$",
+    "instructions": {
+      "ADC": 125,
+      "AND": 61,
+      "ASL": 30,
+      "BIT": 60,
+      "CMP": 221,
+      "DEC": 222,
+      "EOR": 93,
+      "INC": 254,
+      "LDA": 189,
+      "LDY": 188,
+      "LSR": 94,
+      "ORA": 29,
+      "ROL": 62,
+      "ROR": 126,
+      "SBC": 253,
+      "STA": 157,
+      "STZ": 158
+    }
+  },
+  "AbsoluteIndexedY": {
+    "shorthand": "abs_y",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "${0:X4}, Y",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s?[Yy]$",
+    "instructions": {
+      "ADC": 121,
+      "AND": 57,
+      "CMP": 217,
+      "EOR": 89,
+      "LDA": 185,
+      "LDX": 190,
+      "ORA": 25,
+      "SBC": 249,
+      "STA": 153
+    }
+  },
+  "AbsoluteIndirect": {
+    "shorthand": "abs_ind",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "(${0})",
+    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+)\\)$",
+    "instructions": {
+      "JMP": 108
+    }
+  },
+  "AbsoluteIndirectLong": {
+    "shorthand": "abs_indl",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "[${0}]",
+    "parseRegex": "^\\[(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+)\\]$",
+    "instructions": {
+      "JML": 220
+    }
+  },
+  "AbsoluteIndexedIndirect": {
+    "shorthand": "abs_x_ind",
+    "operands": [ "Offset" ],
+    "size": 3,
+    "formatString": "(${0}, X)",
+    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s*[Xx]\\)$",
+    "instructions": {
+      "JMP": 124,
+      "JSR": 252
+    }
+  },
+  "AbsoluteLong": {
+    "shorthand": "long",
+    "operands": [ "Address" ],
+    "size": 4,
+    "formatString": "${0:X6}",
+    "parseRegex": "^\\$([A-Fa-f0-9]{6}|\\@[A-Za-z0-9-+_]+)$",
+    "instructions": {
+      "ADC": 111,
+      "AND": 47,
+      "CMP": 207,
+      "EOR": 79,
+      "JML": 92,
+      "JSL": 34,
+      "LDA": 175,
+      "ORA": 15,
+      "SBC": 239,
+      "STA": 143
+    }
+  },
+  "AbsoluteLongIndexedX": {
+    "shorthand": "long_x",
+    "operands": [ "Address" ],
+    "size": 4,
+    "formatString": "${0:X6}, X",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{6}|\\$?@[A-Za-z0-9-+_]+),\\s?[Xx]$",
+    "instructions": {
+      "ADC": 127,
+      "AND": 63,
+      "CMP": 223,
+      "EOR": 95,
+      "LDA": 191,
+      "ORA": 31,
+      "SBC": 255,
+      "STA": 159
+    }
+  },
+  "DirectPage": {
+    "shorthand": "dp",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "${0:X2}",
+    "parseRegex": "^\\$([A-Fa-f0-9]{2})$",
+    "instructions": { 
+      "ADC": 101,
+      "AND": 37,
+      "ASL": 6,
+      "BIT": 36,
+      "CMP": 197,
+      "CPX": 228,
+      "CPY": 196,
+      "DEC": 198,
+      "EOR": 69,
+      "INC": 230,
+      "LDA": 165,
+      "LDX": 166,
+      "LDY": 164,
+      "LSR": 70,
+      "ORA": 5,
+      "ROL": 38,
+      "ROR": 102,
+      "SBC": 229,
+      "STA": 133,
+      "STX": 134,
+      "STY": 132,
+      "STZ": 100,
+      "TRB": 20,
+      "TSB": 4
+    }
+  },
+  "DirectPageIndexedX": {
+    "shorthand": "dp_x",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "${0:X2}, X",
+    "parseRegex": "^\\$([A-Fa-f0-9]{2}),\\s?[Xx]$",
+    "instructions": {
+      "ADC": 117,
+      "AND": 53,
+      "ASL": 22,
+      "BIT": 52,
+      "CMP": 213,
+      "DEC": 214,
+      "EOR": 85,
+      "INC": 246,
+      "LDA": 181,
+      "LDY": 180,
+      "LSR": 86,
+      "ORA": 21,
+      "ROL": 54,
+      "ROR": 118,
+      "SBC": 245,
+      "STA": 149,
+      "STY": 148,
+      "STZ": 116
+    }
+  },
+  "DirectPageIndexedY": {
+    "shorthand": "dp_y",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "${0:X2}, Y",
+    "parseRegex": "^\\$([A-Fa-f0-9]{2}),\\s?[Yy]$",
+    "instructions": {
+      "LDX": 182,
+      "STX": 150
+    }
+  },
+  "DirectPageIndirect": {
+    "shorthand": "dp_ind",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "(${0:X2})",
+    "parseRegex": "^\\(\\$([A-Fa-f0-9]{2})\\)$",
+    "instructions": {
+      "ADC": 114,
+      "AND": 50,
+      "CMP": 210,
+      "EOR": 82,
+      "LDA": 178,
+      "ORA": 18,
+      "PEI": 212,
+      "SBC": 242,
+      "STA": 146
+    }
+  },
+  "DirectPageIndirectLong": {
+    "shorthand": "dp_indl",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "[${0:X2}]",
+    "parseRegex": "^\\[\\$([A-Fa-f0-9]{2})\\]$",
+    "instructions": {
+      "ADC": 103,
+      "AND": 39,
+      "CMP": 199,
+      "EOR": 71,
+      "LDA": 167,
+      "ORA": 7,
+      "SBC": 231,
+      "STA": 135
+    }
+  },
+  "DirectPageIndexedIndirectX": {
+    "shorthand": "dp_x_ind",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "(${0:X2}, X)",
+    "parseRegex": "^\\(\\$([A-Fa-f0-9]{2}),\\s?[Xx]\\)$",
+    "instructions": {
+      "ADC": 97,
+      "AND": 33,
+      "CMP": 193,
+      "EOR": 65,
+      "LDA": 161,
+      "ORA": 1,
+      "SBC": 225,
+      "STA": 129
+    }
+  },
+  "DirectPageIndirectIndexedY": {
+    "shorthand": "dp_ind_y",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "(${0:X2}), Y",
+    "parseRegex": "^\\(\\$([A-Fa-f0-9]{2})\\),\\s?[Yy]$",
+    "instructions": {
+      "ADC": 113,
+      "AND": 49,
+      "CMP": 209,
+      "EOR": 81,
+      "LDA": 177,
+      "ORA": 17,
+      "SBC": 241,
+      "STA": 145
+    }
+  },
+  "DirectPageIndirectLongIndexedY": {
+    "shorthand": "dp_indl_y",
+    "operands": [ "Direct" ],
+    "size": 2,
+    "formatString": "[${0:X2}], Y",
+    "parseRegex": "^\\[\\$([A-Fa-f0-9]{2})\\],\\s?[Yy]$",
+    "instructions": {
+      "ADC": 119,
+      "AND": 55,
+      "CMP": 215,
+      "EOR": 87,
+      "LDA": 183,
+      "ORA": 23,
+      "SBC": 247,
+      "STA": 151
+    }
+  },
+  "Immediate": {
+    "shorthand": "imm",
+    "operands": [ "Immediate" ],
+    "size": 2,
+    "formatString": "#${0:X2}",
+    "parseRegex": "^#(\\$[A-Fa-f0-9]{2,4}|\\$?[&^*][A-Za-z0-9-+_]+)$",
+    "instructions": {
+      "ADC": 105,
+      "AND": 41,
+      "BIT": 137,
+      "CMP": 201,
+      "CPX": 224,
+      "CPY": 192,
+      "EOR": 73,
+      "LDA": 169,
+      "LDX": 162,
+      "LDY": 160,
+      "ORA": 9,
+      "REP": 194,
+      "SBC": 233,
+      "SEP": 226
+    }
+  },
+  "Implied": {
+    "shorthand": "imp",
+    "operands": [],
+    "size": 1,
+    "formatString": null,
+    "parseRegex": null,
+    "instructions": {
+      "CLC": 24,
+      "CLD": 216,
+      "CLI": 88,
+      "CLV": 184,
+      "DEX": 202,
+      "DEY": 136,
+      "INX": 232,
+      "INY": 200,
+      "NOP": 234,
+      "SEC": 56,
+      "SED": 248,
+      "SEI": 120,
+      "STP": 219,
+      "TAX": 170,
+      "TAY": 168,
+      "TCD": 91,
+      "TCS": 27,
+      "TDC": 123,
+      "TSC": 59,
+      "TSX": 186,
+      "TXA": 138,
+      "TXS": 154,
+      "TXY": 155,
+      "TYA": 152,
+      "TYX": 187,
+      "WAI": 203,
+      "WDM": 66,
+      "XBA": 235,
+      "XCE": 251
+    }
+  },
+  "Accumulator": {
+    "shorthand": "acc",
+    "operands": [],
+    "size": 1,
+    "formatString": null,
+    "parseRegex": null,
+    "instructions": {
+      "ASL": 10,
+      "DEC": 58,
+      "INC": 26,
+      "LSR": 74,
+      "ROL": 42,
+      "ROR": 106
+    }
+  },
+  "PCRelative": {
+    "shorthand": "rel",
+    "operands": [ "Relative" ],
+    "size": 2,
+    "formatString": "{0}",
+    "parseRegex": "^([A-Za-z_][A-Za-z0-9_]*|\\$[A-Fa-f0-9]{2})$",
+    "instructions": {
+      "BPL": 16,
+      "BMI": 48,
+      "BRA": 128,
+      "BCC": 144,
+      "BCS": 176,
+      "BNE": 208,
+      "BEQ": 240,
+      "BVC": 80,
+      "BVS": 112
+    }
+  },
+  "PCRelativeLong": {
+    "shorthand": "rel16",
+    "operands": [ "RelativeLong" ],
+    "size": 3,
+    "formatString": "{0}",
+    "parseRegex": "^([A-Za-z_][A-Za-z0-9_]*|\\$[A-Fa-f0-9]{4})$",
+    "instructions": {
+      "BRL": 130,
+      "PER": 98
+    }
+  },
+  "StackRelative": {
+    "shorthand": "stkr",
+    "operands": [ "Byte" ],
+    "size": 2,
+    "formatString": "${0:X2}, S",
+    "parseRegex": "^\\$([A-Fa-f0-9]{2}),\\s?[Ss]$",
+    "instructions": {
+      "ADC": 99,
+      "AND": 35,
+      "CMP": 195,
+      "EOR": 67,
+      "LDA": 163,
+      "ORA": 3,
+      "SBC": 227,
+      "STA": 131
+    }
+  },
+  "StackRelativeIndirectIndexedY": {
+    "shorthand": "stkr_ind_y",
+    "operands": [ "Byte" ],
+    "size": 2,
+    "formatString": "(${0:X2}, S), Y",
+    "parseRegex": "^\\(\\$([A-Fa-f0-9]{2}),\\s?[Ss]\\),\\s?[Yy]$",
+    "instructions": {
+      "ADC": 115,
+      "AND": 51,
+      "CMP": 211,
+      "EOR": 83,
+      "LDA": 179,
+      "ORA": 19,
+      "SBC": 243,
+      "STA": 147
+    }
+  },
+  "BlockMove": {
+    "shorthand": "src_dest",
+    "operands": [ "Byte", "Byte" ],
+    "size": 3,
+    "formatString": "#${0:X2}, #${1:X2}",
+    "parseRegex": "^#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9-+_]+),\\s?#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9-+_]+)$",
+    "instructions": {
+      "MVN": 84,
+      "MVP": 68
+    }
+  },
+  "StackInterrupt": {
+    "shorthand": "stk_int",
+    "operands": [ "Byte" ],
+    "size": 2,
+    "formatString": "#${0:X2}",
+    "parseRegex": "^#\\$([A-Fa-f0-9]{2})$",
+    "instructions": {
+      "BRK": 0,
+      "COP": 2
+    }
+  },
+  "Stack": {
+    "shorthand": "stk",
+    "operands": [],
+    "size": 1,
+    "formatString": null,
+    "parseRegex": null,
+    "instructions": {
+      "PHA": 72,
+      "PHB": 139,
+      "PHD": 11,
+      "PHK": 75,
+      "PHP": 8,
+      "PHX": 218,
+      "PHY": 90,
+      "PLA": 104,
+      "PLB": 171,
+      "PLD": 43,
+      "PLP": 40,
+      "PLX": 250,
+      "PLY": 122,
+      "RTI": 64,
+      "RTL": 107,
+      "RTS": 96
+    }
+  }
+}

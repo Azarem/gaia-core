@@ -22,9 +22,9 @@ const isWindows = (() => {
     return process.platform === 'win32';
   }
   // In web environment, check user agent as fallback
-  if (typeof navigator !== 'undefined' && navigator.userAgent) {
-    return navigator.userAgent.includes('Windows');
-  }
+  // if (typeof navigator !== 'undefined' && navigator.userAgent) {
+  //   return navigator.userAgent.includes('Windows');
+  // }
   // Default to Unix-style line endings if we can't determine
   return false;
 })();

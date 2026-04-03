@@ -23,3 +23,4 @@ export * from './scenes';
 export * from './groups';
 export * from './addressingMode';
 export * from './modules'
+export * from './header';

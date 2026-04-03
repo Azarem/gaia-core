@@ -12,16 +12,17 @@ export class DbPart {
   public order?: number;
 
   constructor(data: Partial<DbPart>) {
-    this.name = data.name ?? '';
-    this.start = data.start ?? undefined;
-    this.end = data.end ?? 0;
-    this.type = data.type ?? '';
+    if(typeof data.start !== 'number') throw new Error('Start is required');
+    if(!data.name) throw new Error('Name is required');
+    if(!data.end) throw new Error('End is required');
+    if(!data.type) throw new Error('Struct is required');
+
+    this.name = data.name;
+    this.start = data.start;
+    this.end = data.end;
+    this.type = data.type;
     this.bank = data.bank ?? undefined;
     this.order = data.order ?? undefined;
 
-    if(!this.name) throw new Error('Name is required');
-    if(this.start === undefined) throw new Error('Start is required');
-    if(!this.end) throw new Error('End is required');
-    if(!this.type) throw new Error('Struct is required');
   }
 }

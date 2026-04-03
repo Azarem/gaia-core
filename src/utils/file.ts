@@ -185,6 +185,7 @@ export async function removeDirectory(dirPath: string): Promise<void> {
 export interface DirectoryEntry {
   name: string;
   path: string;
+  extension: string | null;
   isDirectory: boolean;
   isFile: boolean;
 }
@@ -218,16 +219,21 @@ export async function listDirectory(
       for (const item of items) {
         const itemPath = pathModule.join(fullPath, item);
         const stats = await stat(itemPath);
+        const isFile = stats.isFile();
+        const extIx = isFile ? item.indexOf('.') : -1;
+        const ext = extIx > 0 ? item.substring(extIx + 1) : null;
+        const name = extIx > 0 ? item.substring(0, extIx) : item;
 
         const entry: DirectoryEntry = {
-          name: item,
+          name: name,
           path: itemPath,
-          isDirectory: stats.isDirectory(),
-          isFile: stats.isFile()
+          extension: ext,
+          isFile: isFile,
+          isDirectory: stats.isDirectory()
         };
 
         // Apply extension filter
-        if (extension && entry.isFile && !entry.name.endsWith(extension)) {
+        if (extension && ext !== extension) {
           continue;
         }
 

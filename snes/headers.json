@@ -1,0 +1,40 @@
+[
+    {
+        "address": 65456,
+        "condition": "values.developerId === 51",
+        "parts": [
+            { "name": "makerCode", "size": 2, "type": "string" },
+            { "name": "gameCode", "size": 4, "type": "string" },
+            { "name": "reserved", "size": 10, "type": "byte", "value": 0 }
+        ]
+    },
+    {
+        "address": 65472,
+        "parts": [
+            { "name": "gameTitle", "size": 21, "type": "string" },
+            { "name": "mapMode", "size": 1, "type": "byte" },
+            { "name": "chipset", "size": 1, "type": "byte" },
+            { "name": "romSize", "size": 1, "type": "byte" },
+            { "name": "ramSize", "size": 1, "type": "byte" },
+            { "name": "countryCode", "size": 1, "type": "byte" },
+            { "name": "developerId", "size": 1, "type": "byte" },
+            { "name": "gameVersion", "size": 1, "type": "byte" },
+            { "name": "compliment", "size": 2, "type": "word" },
+            { "name": "checksum", "size": 2, "type": "word" },
+            { "name": "reserved", "size": 4, "type": "byte", "value": 0 },
+            { "name": "nativeCop", "size": 2, "type": "entry" },
+            { "name": "nativeBrk", "size": 2, "type": "entry" },
+            { "name": "nativeAbort", "size": 2, "type": "entry" },
+            { "name": "nativeNmi", "size": 2, "type": "entry" },
+            { "name": "reserved", "size": 2, "type": "byte", "value": 0 },
+            { "name": "nativeIrq", "size": 2, "type": "entry" },
+            { "name": "reserved", "size": 4, "type": "byte", "value": 0 },
+            { "name": "emulationCop", "size": 2, "type": "entry" },
+            { "name": "reserved", "size": 2, "type": "byte", "value": 0 },
+            { "name": "emulationAbort", "size": 2, "type": "entry" },
+            { "name": "emulationNmi", "size": 2, "type": "entry" },
+            { "name": "emulationReset", "size": 2, "type": "entry" },
+            { "name": "emulationBrk", "size": 2, "type": "entry" }
+        ]
+    }
+]

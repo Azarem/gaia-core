@@ -4,6 +4,7 @@ import { RomLayout } from './layout';
 import { RomWriter } from './writer';
 import { Assembler } from '../..';
 import { DbRoot } from '../../database';
+import { AsmBlock } from '../../types/assembly';
 
 /**
  * ROM rebuild processor
@@ -16,23 +17,26 @@ export class RomProcessor {
     this.writer = writer;
   }
 
-  public async repack(allFiles: ChunkFile[]): Promise<void> {
+  public async repack(allFiles: ChunkFile[]): Promise<Map<string, number>> {
     // Discover files
     //const allFiles = await this.discoverFiles(this.writer._projectRoot.baseDir);
 
     const patches : ChunkFile[] = [];
     const asmFiles : ChunkFile[] = [];
+    const compression = this.writer.root.compression;
+    const canCompress = !!compression;
+    const conditionFiles : string[] = [];
 
     for (const file of allFiles) {
       if (file.type.type === "Patch") {
         patches.push(file);
       } else if (file.type.type !== "Assembly") {
-        if(file.compressed === true) {
+        if(file.compressed === true && canCompress) {
           if(this.writer.root.config.uncompress){
             file.compressed = false;
           } else {
-            let newData = this.writer.root.compression.compact(file.rawData!, file.type.header);
-            if(file.type.header) newData = new Uint8Array([...file.rawData.slice(0, file.type.header), ...newData]);
+            let newData = compression!.compact(file.rawData!, file.type.header);
+            if(file.type.header) newData = new Uint8Array([...file.rawData!.slice(0, file.type.header), ...newData]);
             file.rawData = newData;
             file.size = newData.length;
           }
@@ -41,9 +45,12 @@ export class RomProcessor {
       }
       
       asmFiles.push(file);
+      conditionFiles.push(file.name);
+    }
 
+    for(const file of asmFiles) {
       if(!file.parts) {
-        const assembler = new Assembler(this.writer.root, file.textData);
+        const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
         const { blocks, includes, reqBank } = assembler.parseAssembly();
         file.parts = blocks;
         file.includes = includes;
@@ -85,6 +92,8 @@ export class RomProcessor {
       ChunkFileUtils.rebase(file);
     }
 
+    const masterLookup = new Map<string, number>();
+
     // Build include lookup map per asm file
     for (const f of asmFiles) {
       const includeBlocks = asmFiles
@@ -92,30 +101,36 @@ export class RomProcessor {
         .flatMap(x => x.parts!)
         .filter(b => !!b.label);
 
-      f.includeLookup = new Map();
+      f.includeLookup = new Map<string, AsmBlock>();
 
+      //Add labels from include blocks
       for (const b of includeBlocks) {
         if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
       }
 
-      for (const b of (f.parts || []).filter(x => !!x.label)) {
-        if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
+      //Add labels from current file
+      for (const b of f.parts!) {
+        if(b.label) {
+          const nameUpper = b.label.toUpperCase();
+          masterLookup.set(nameUpper, b.location);
+          f.includeLookup.set(nameUpper, b);
+        }
       }
     }
 
     // Create block lookup for resolving labels to locations
-    const blockLookup = new Map<string, number>();
-    for (const f of allFiles) {
-      blockLookup.set(f.name.toUpperCase(), f.location);
-    }
+    const fileLookup = new Map<string, number>();
+    for (const f of allFiles) fileLookup.set(f.name.toUpperCase(), f.location);
     
     //Allocate memory for the ROM
     this.writer.allocate(pages);
 
     // Write all files
     for (const file of allFiles) {
-      await this.writer.writeFile(file, blockLookup);
+      await this.writer.writeFile(file, fileLookup);
     }
+
+    return masterLookup;
   }
 
   public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[]): void {

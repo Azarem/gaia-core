@@ -95,6 +95,7 @@ export class RomLayout {
         let offset = 0;
         while(remain > 0 && this.sfxFiles.length) {
           const file = this.sfxFiles.shift();
+          if(!file) continue;
           file.location = start + offset;
           console.log(`  ${file.location.toString(16).toUpperCase().padStart(6, '0')}: ${file.name}`);
           offset += file.size;
@@ -106,11 +107,11 @@ export class RomLayout {
 
             if(offset) {
               const newFile = new ChunkFile(file.name + "_2", file.size, file.location, Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!);
-              const end = file.rawData.length - offset;
-              newFile.rawData = file.rawData.slice(end);
+              const end = file.rawData!.length - offset;
+              newFile.rawData = file.rawData!.slice(end);
               newFile.size = newFile.rawData.length;
               this.sfxFiles.unshift(newFile);
-              file.rawData = file.rawData.slice(0, end);
+              file.rawData = file.rawData!.slice(0, end);
               file.size -= offset;
             }
             remain = 0;

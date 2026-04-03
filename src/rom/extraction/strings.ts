@@ -112,7 +112,7 @@ export class StringReader {
       } else {
         let found = false;
         for(const dictionary of Object.values(dictionaries)) {
-          if(c >= dictionary.base && c <= dictionary.range) {
+          if(dictionary.base !== undefined && c >= dictionary.base && c <= dictionary.range) {
             builder.push(dictionary.entries[c - dictionary.base]);
             found = true;
             break;

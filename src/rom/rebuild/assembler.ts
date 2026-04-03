@@ -4,13 +4,22 @@ import { AsmBlock } from '../../types/assembly';
 import { StringProcessor } from './string-processor';
 import { SortedMap } from './sorted-map';
 import { AssemblerState } from './assembler-state';
-import type { AssemblerContext } from './assembler-context';
+
+// export class ConditionBlock extends AsmBlock {
+//   public condition: string;
+//   //public next: ConditionBlock | null = null;
+
+//   constructor(location: number = 0, condition: string) {
+//     super(location, 0, false, undefined, undefined, undefined);
+//     this.condition = condition;
+//   }
+// }
 
 /**
  * Main assembler class for parsing assembly files
  * Converted from GaiaLib/Rom/Rebuild/Assembler.cs
  */
-export class Assembler implements AssemblerContext {
+export class Assembler {
   public readonly root: DbRoot;
   private readonly lines: string[];
   private currentLineIndex: number = 0;
@@ -22,18 +31,23 @@ export class Assembler implements AssemblerContext {
   public tags = new SortedMap<string | null>();
   public currentBlock: AsmBlock | null = null;
   public lineCount: number = 0;
-  public blockIndex: number = 0;
+  //public blockIndex: number = 0;
   public lastDelimiter: number | null = null;
   public reqBank: number | null = null;
   public eof: boolean = false;
   public strDelimRegex: RegExp;
+  public conditionFiles: string[];
+  private inCondition: boolean = false;
+  private exitCondition: boolean = false;
+  private failCondition: boolean = false;
 
-  constructor(dbRoot: DbRoot, textData: string) {
+  constructor(dbRoot: DbRoot, textData: string, conditionFiles: string[]) {
     this.root = dbRoot;
     // Handle both Windows (\r\n) and Unix (\n) line endings
     this.lines = textData.split(/\r?\n/);
     this.stringProcessor = new StringProcessor(this);
     this.strDelimRegex = new RegExp(`[${this.root.stringDelimiters.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('')}]`);
+    this.conditionFiles = conditionFiles;
   }
 
   public parseAssembly(): { blocks: AsmBlock[], includes: Set<string>, reqBank: number | null } {
@@ -106,6 +120,11 @@ export class Assembler implements AssemblerContext {
         continue;
       }
 
+      if(this.failCondition) {
+        this.lineBuffer = '';
+        continue;
+      }
+
       // Process tags
       if (this.lineBuffer[0] === '!') {
         this.processTags();
@@ -145,7 +164,7 @@ export class Assembler implements AssemblerContext {
       endIx = this.lineBuffer.length;
     }
 
-    const value = this.lineBuffer.substring(endIx).replace(/^[\s,\t]+/, '');
+    let value = this.lineBuffer.substring(endIx).replace(/^[\s,\t]+/, '');
 
     switch (this.lineBuffer.substring(1, endIx).toUpperCase()) {
       // This is taken care of by the loader
@@ -157,6 +176,39 @@ export class Assembler implements AssemblerContext {
         if (value.length > 0) {
           this.includes.add(value.toUpperCase().replace(/'/g, ''));
         }
+        break;
+
+      case 'IF':
+        if(this.inCondition) throw new Error('IF without ENDIF');
+        value = value.replace(/'/g, '');
+        if(!value) throw new Error('IF without condition');
+        this.inCondition = true;
+        if(!this.conditionFiles.includes(value)) { this.failCondition = true; this.exitCondition = false; }
+        else { this.failCondition = false; this.exitCondition = true; }
+        break;
+        
+      case 'ELSEIF':
+        if(!this.inCondition) throw new Error('ELSEIF without IF');
+        value = value.replace(/'/g, '');
+        if(!value) throw new Error('ELSEIF without condition');
+        if(this.exitCondition || !this.conditionFiles.includes(value)) this.failCondition = true;
+        else { this.exitCondition = true; this.failCondition = false; }
+        break;
+        
+      case 'ELSE':
+        if(!this.inCondition) throw new Error('ELSE without IF');
+        if(value) throw new Error('ELSE with condition');
+
+        if(this.exitCondition) this.failCondition = true;
+        else { this.failCondition = false; this.exitCondition = true; }
+        break;
+
+      case 'ENDIF':
+        if(!this.inCondition) throw new Error('ENDIF without IF');
+        if(value) throw new Error('ENDIF with condition');
+        this.failCondition = false;
+        this.exitCondition = false;
+        this.inCondition = false;
         break;
     }
   }

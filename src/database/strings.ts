@@ -13,15 +13,15 @@ export class DbStringCommand {
   public dictionary?: DbStringDictionary;
 
   constructor(data: Partial<DbStringCommand>) {
-    this.id = data.id ?? undefined;
-    this.name = data.name ?? '';
+    if(typeof data.id !== 'number') throw new Error('Id is required');
+    if(!data.name) throw new Error('Name is required');
+
+    this.id = data.id;
+    this.name = data.name;
     this.types = data.types ?? [];
     this.delimiter = data.delimiter ?? undefined;
     this.halt = data.halt ?? false;
     this.dictionary = data.dictionary ?? undefined;
-
-    if(!this.id && this.id !== 0) throw new Error('Id is required');
-    if(!this.name) throw new Error('Name is required');
   }
 }
 
@@ -38,24 +38,24 @@ export interface DbStringLayer {
 }
 
 export class DbStringDictionary {
-  public base: number;
+  public base?: number;
   public range: number;
-  public command: number;
+  public command?: number;
   public name: string;
   //public suffix: string;
   public entries: string[];
 
   constructor(data: Partial<DbStringDictionary>) {
+    if(typeof data.base !== 'number' && typeof data.command !== 'number') throw new Error('Base or command is required');
+    if(!data.name) throw new Error('Name is required');
+    if(!data.entries || data.entries.length === 0) throw new Error('Entries is required');
+
     this.base = data.base ?? undefined;
     this.range = data.range ?? 0;
     this.command = data.command ?? undefined;
-    this.name = data.name ?? '';
-    this.entries = data.entries ?? undefined;
+    this.name = data.name;
+    this.entries = data.entries;
     //this.suffix = data.suffix ?? '';
-
-    if(this.base === undefined && this.command === undefined) throw new Error('Base or command is required');
-    if(!this.name) throw new Error('Name is required');
-    if(!this.entries) throw new Error('Entries is required');
 
     if(this.base !== undefined) this.range = this.base + this.entries.length;
   }
@@ -77,11 +77,16 @@ export class DbStringType {
   public dictionaryLookup: { text: string, id: number }[];
 
   constructor(data: Partial<DbStringType>) {
-    this.name = data.name ?? '';
-    this.delimiter = data.delimiter ?? '';
-    this.terminator = data.terminator ?? 0;
+    if(!data.name) throw new Error('Name is required');
+    if(!data.delimiter) throw new Error('Delimiter is required');
+    if(typeof data.terminator !== 'number') throw new Error('Terminator is required');
+    if(!data.layers || !data.layers.length) throw new Error('Layers are required');
+
+    this.name = data.name;
+    this.delimiter = data.delimiter;
+    this.terminator = data.terminator;
     this.commands = data.commands ?? {};
-    this.layers = data.layers ?? [];
+    this.layers = data.layers;
     this.greedyTerminator = data.greedyTerminator ?? false;
     this.dictionaries = data.dictionaries ?? {};
     this.commandLookup = Object.values(this.commands).reduce((acc, x) => {
@@ -89,14 +94,9 @@ export class DbStringType {
       return acc;
     }, {} as Record<number, DbStringCommand>);
     this.dictionaryLookup = Object.values(this.dictionaries)
-      .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: (y.command << 8) | (y.base + ix) })))
+      .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: (y.command ?? 0 << 8) | (y.base ?? 0 + ix) })))
       //.map((y, z) => ({ text: y.entries[z], id: (y.command << 8) | (y.base + z) }))
       .sort((a, b) => b.text.length - a.text.length);
-
-    if(!this.name) throw new Error('Name is required');
-    if(!this.delimiter) throw new Error('Delimiter is required');
-    if(!this.terminator && this.terminator !== 0) throw new Error('Terminator is required');
-    if(!this.layers.length) throw new Error('Layers are required');
   }
 }
 

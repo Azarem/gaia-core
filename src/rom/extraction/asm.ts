@@ -71,13 +71,13 @@ export class AsmReader {
   public clearDestinationRegister(code: OpCode, reg: Registers): void {
     switch (code.mnem) {
       case 'LDA':
-        reg.value['accumulator'] = undefined;
+        delete reg.value['accumulator'];
         break;
       case 'LDX':
-        reg.value['xIndex'] = undefined;
+        delete reg.value['xIndex'];
         break;
       case 'LDY':
-        reg.value['yIndex'] = undefined;
+        delete reg.value['yIndex'];
         break;
     }
   }

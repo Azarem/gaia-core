@@ -6,20 +6,6 @@ import { ICompressionProvider } from './compression';
 import { MemoryMapMode } from './addressing';
 
 /**
- * Types that should have a compression header by default but should not be compressed
- */
-const UNCOMPRESSED_TYPES = ['Bitmap', 'Tilemap', 'Tileset', 'Spritemap', 'Meta17'] as const;
-
-/**
- * Type guard to check if a type is an uncompressed type
- * Works with both BinType enum values and string values
- */
-function isUncompressedType(type: BinType | string): boolean {
-  // Since BinType is a string enum, we can directly check the value
-  return UNCOMPRESSED_TYPES.includes(type as any);
-}
-
-/**
  * Chunk file for ROM processing
  * Converted from GaiaLib/Types/ChunkFile.cs
  */
@@ -48,7 +34,7 @@ export class ChunkFile {
     this.size = size;
     this.location = location;
     this.mnemonics = {};
-    this.compressed = isUncompressedType(type.type) ? false : undefined;
+    this.compressed = type.compressed;
     this.type = type;
   }
 
@@ -90,7 +76,7 @@ export class ChunkFile {
 //   };
 // }
 
-export function createChunkFileFromDbFile(rom: Uint8Array, compression: ICompressionProvider, dbFile: DbFile, fileType: DbFileType): ChunkFile {
+export function createChunkFileFromDbFile(rom: Uint8Array, compression: ICompressionProvider | undefined, dbFile: DbFile, fileType: DbFileType): ChunkFile {
   // Create ChunkFile with the DbFile's type
   const chunkFile = new ChunkFile(dbFile.name, dbFile.end - dbFile.start, dbFile.start, fileType);
   //chunkFile.id = dbFile.id;
@@ -145,7 +131,7 @@ function combineHeader(
 /**
  * Enriches ChunkFile with raw binary data from DbFile
  */
-function enrichWithRawDataFromDbFile(rom: Uint8Array, chunkFile: ChunkFile, compression: ICompressionProvider, dbFile: DbFile, fileType: DbFileType): void {
+function enrichWithRawDataFromDbFile(rom: Uint8Array, chunkFile: ChunkFile, compression: ICompressionProvider | undefined, dbFile: DbFile, fileType: DbFileType): void {
   
   // Extract raw data (uncompressed) with headers for specific types
   let start = dbFile.start;
@@ -156,7 +142,7 @@ function enrichWithRawDataFromDbFile(rom: Uint8Array, chunkFile: ChunkFile, comp
   }
   let length = dbFile.end - start;
   let fileData: Uint8Array;
-  if (dbFile.compressed === true) {
+  if (dbFile.compressed === true && compression) {
     const expanded = compression.expand(rom, start, length);
     fileData = combineHeader(expanded, 0, expanded.length, header, fileType.type as BinType);
   } else {
