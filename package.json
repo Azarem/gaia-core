@@ -1,6 +1,6 @@
 {
   "name": "@gaialabs/core",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "GaiaLabs TypeScript Core Library - Universal ROM processing engine",
   "funding": "https://github.com/sponsors/Azarem",
   "main": "dist/index.cjs",
@@ -35,6 +35,7 @@
     "@supabase/supabase-js": "^2.55.0"
   },
   "devDependencies": {
+    "@prisma/adapter-pg": "^7.6.0",
     "@paralleldrive/cuid2": "^2.2.2",
     "@types/node": "^20.19.29",
     "@typescript-eslint/eslint-plugin": "^8.53.0",

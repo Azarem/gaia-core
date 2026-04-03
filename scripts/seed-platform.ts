@@ -1,10 +1,14 @@
+import 'dotenv/config';
 import { PrismaClient } from '../prisma.mjs';
 import { createId } from '@paralleldrive/cuid2';
 import snesAddressingModes from '../snes/addressingModes.json' with { type: 'json' };
 import snesVectors from '../snes/vectors.json' with { type: 'json' };
 import snesHeaders from '../snes/headers.json' with { type: 'json' };
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 // --- Game and Release Master Data ---
 const GAME_TITLE = 'Illusion of Gaia';

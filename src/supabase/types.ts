@@ -130,7 +130,6 @@ export interface RegionData {
   id: string;
   name: string;
   meta: any | null;
-  platformId: string;
   createdAt: string;
   updatedAt: string;
 }

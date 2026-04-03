@@ -592,7 +592,6 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
                 id,
                 name,
                 meta,
-                platformId,
                 createdAt,
                 updatedAt
               )
@@ -763,7 +762,6 @@ export async function fromSupabaseByGameRom(gameName?: string, regionName?: stri
             id,
             name,
             meta,
-            platformId,
             createdAt,
             updatedAt
           )
@@ -975,7 +973,6 @@ export async function summaryFromSupabaseByProject(projectName?: string): Promis
                 id,
                 name,
                 meta,
-                platformId,
                 createdAt,
                 updatedAt
               )
