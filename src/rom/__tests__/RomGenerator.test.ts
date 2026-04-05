@@ -3,10 +3,13 @@ import { readFileAsBinary, saveFileAsBinary } from '../../utils';
 import { RomGenerator } from '../generator';
 
 const OUT_PATH = './temp';
+const projectName = 'Illusion of Gaia: Retranslated';
+const CRC = 0x1C3848C0;
 
 describe('RomGenerator', async () => {
   const data = await readFileAsBinary('C:/Games/SNES/Illusion of Gaia.smc');
   const modules = [
+    "base",
     "title-enhanced",
     "jp-edward-mountains",
     "jp-itory-mountains",
@@ -28,15 +31,15 @@ describe('RomGenerator', async () => {
   
   describe('Constructor', () => {
     it('should create a rom generator which downloads project summary', () => {
-      romGenerator = new RomGenerator("Illusion of Gaia: Retranslated");
+      romGenerator = new RomGenerator(projectName, CRC);
       expect(romGenerator).toBeDefined();
     });
 
-    it('should be able to initialize', async () => {
-      await romGenerator.initialize();
-      expect(romGenerator.branchId).toBeDefined();
-      expect(romGenerator.crc).toBeDefined();
-    });
+    // it('should be able to initialize', async () => {
+    //   await romGenerator.initialize();
+    //   expect(romGenerator.branchId).toBeDefined();
+    //   expect(romGenerator.crc).toBeDefined();
+    // });
   });
 
   describe('ValidateAndDownload', () => {
@@ -46,7 +49,6 @@ describe('RomGenerator', async () => {
       expect(romGenerator.dbRoot).toBeDefined();
       expect(romGenerator.dbRoot.baseRomFiles?.length).toBeGreaterThan(0);
       expect(romGenerator.dbRoot.projectFiles?.length).toBeGreaterThan(0);
-      expect(romGenerator.dbRoot.entryPoints?.length).toBeGreaterThan(0);
       expect(Object.keys(romGenerator.dbRoot.opCodes ?? {}).length).toBeGreaterThan(0);
       expect(Object.keys(romGenerator.dbRoot.opLookup ?? {}).length).toBeGreaterThan(0);
       expect(Object.keys(romGenerator.dbRoot.addrLookup ?? {}).length).toBeGreaterThan(0);

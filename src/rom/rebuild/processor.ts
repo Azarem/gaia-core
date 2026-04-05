@@ -49,13 +49,11 @@ export class RomProcessor {
     }
 
     for(const file of asmFiles) {
-      if(!file.parts) {
-        const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
-        const { blocks, includes, reqBank } = assembler.parseAssembly();
-        file.parts = blocks;
-        file.includes = includes;
-        file.bank = reqBank ?? void 0;
-      }
+      const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
+      const { blocks, includes, reqBank } = assembler.parseAssembly();
+      file.parts = blocks;
+      file.includes = includes;
+      file.bank = reqBank ?? void 0;
     }
 
     // const patches = allFiles.filter(x => x.type.type === 'Patch');

@@ -648,7 +648,6 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
     const projectFiles = await loadProjectFiles(branchData.id);
   
     const baseRomFiles = await loadBaseRomFiles(baseRomBranch.id);
-    
 
     fileQueryTime = performance.now() - branchStart - branchQueryTime;
     
@@ -671,6 +670,8 @@ export async function fromSupabaseByProject(projectName?: string, branchId?: str
     console.log('Project ROM load stats:', stats);
     
     const module : DbGameRomModule = {
+      supaProjectFiles: projectFiles,
+      supaBaseRomFiles: baseRomFiles,
       mnemonics: baseRomBranch.gameRomBranch.mnemonics,
       overrides: baseRomBranch.gameRomBranch.overrides,
       rewrites: baseRomBranch.gameRomBranch.rewrites,

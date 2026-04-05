@@ -9,74 +9,7 @@ const TRUTH_PATH = './truth';
 const OUT_PATH = './temp';
 const ROM_PATH = 'C:/Games/SNES/Illusion of Gaia.smc';
 const BASEROM_PATH = 'C:/Work/gaia-iog-baserom/baserom';
-//const FOLDER_PATH = 'C:/Work/gaia-iog-baserom/us';
-//const SYSTEM_PATH = 'C:/Work/gaia-iog-baserom/snes';
-
-
-// const loadBaseRomFile = async (root: DbRoot, name: string, path: string) => {
-//   const index = path.indexOf('.');
-//   const extension = path.substring(index + 1);
-//   const type = root.fileExtLookup[extension];
-//   const chunkFile = new ChunkFile(name, 0, 0, type);
-//   if(chunkFile.type === BinType.Assembly) {
-//     const chunkData = await readFileAsText(`${BASEROM_PATH}/${path}`);
-//     chunkFile.textData = chunkData;
-//     chunkFile.size = chunkData.length;
-//   } else {
-//     const chunkData = await readFileAsBinary(`${BASEROM_PATH}/${path}`);
-//     chunkFile.rawData = chunkData;
-//     chunkFile.size = chunkData.length;
-//   }
-//   return chunkFile;
-// }
-
-
-// const generateBaseromFiles = async (root: DbRoot) => [
-//   await loadBaseRomFile(root, 'itemcomp_table_01EB0F', 'asm/itemcomp_table_01EB0F.asm'),
-//   await loadBaseRomFile(root, 'system_strings', 'asm/system_strings.asm'),
-//   await loadBaseRomFile(root, 'table_17D000', 'asm/table_17D000.asm'),
-//   await loadBaseRomFile(root, 'table_178000', 'asm/table_178000.asm'),
-//   await loadBaseRomFile(root, 'table_179000', 'asm/table_179000.asm'),
-//   await loadBaseRomFile(root, 'gfx_boot_exprite', 'graphics/gfx_boot_exprite.bin'),
-//   await loadBaseRomFile(root, 'gfx_boot_logos', 'graphics/gfx_boot_logos.bin'),
-//   await loadBaseRomFile(root, 'gfx_credits_font', 'graphics/gfx_credits_font.bin'),
-//   await loadBaseRomFile(root, 'gfx_fonts', 'graphics/gfx_fonts.bin'),
-//   await loadBaseRomFile(root, 'gfx_inventory_sprites', 'graphics/gfx_inventory_sprites.bin'),
-//   await loadBaseRomFile(root, 'gfx_item_exprite', 'graphics/gfx_item_exprite.bin'),
-//   await loadBaseRomFile(root, 'misc_fx_1CD580', 'graphics/misc_fx_1CD580.bin'),
-//   await loadBaseRomFile(root, 'fx_palette_198000', 'palettes/fx_palette_198000.pal'),
-//   await loadBaseRomFile(root, 'pal_boot_logos', 'palettes/pal_boot_logos.pal'),
-//   await loadBaseRomFile(root, 'pal_item_exprite', 'palettes/pal_item_exprite.pal'),
-//   await loadBaseRomFile(root, 'pal_item_exprite2', 'palettes/pal_item_exprite2.pal'),
-//   await loadBaseRomFile(root, 'pal_sc02_main_characters', 'palettes/pal_sc02_main_characters.pal'),
-//   await loadBaseRomFile(root, 'spm_boot_logos', 'spritemaps/spm_boot_logos.bin'),
-//   await loadBaseRomFile(root, 'spm_sc02_main_characters', 'spritemaps/spm_sc02_main_characters.bin'),
-//   await loadBaseRomFile(root, 'sprite_1A554C', 'spritemaps/sprite_1A554C.bin'),
-//   await loadBaseRomFile(root, 'AccentMap', 'patches/AccentMap.patch.asm'),
-//   await loadBaseRomFile(root, 'APUWaitFixes', 'patches/APUWaitFixes.patch.asm'),
-//   await loadBaseRomFile(root, 'BitmapPatch', 'patches/BitmapPatch.patch.asm'),
-//   await loadBaseRomFile(root, 'BootMetaFix', 'patches/BootMetaFix.patch.asm'),
-//   await loadBaseRomFile(root, 'Cop51Patch', 'patches/Cop51Patch.patch.asm'),
-//   await loadBaseRomFile(root, 'EquippedIcon', 'patches/EquippedIcon.patch.asm'),
-//   await loadBaseRomFile(root, 'ExpriteLoader', 'patches/ExpriteLoader.patch.asm'),
-//   await loadBaseRomFile(root, 'InventoryCounters', 'patches/InventoryCounters.patch.asm'),
-//   await loadBaseRomFile(root, 'InventoryManagement', 'patches/InventoryManagement.patch.asm'),
-//   await loadBaseRomFile(root, 'ItemSwapping', 'patches/ItemSwapping.patch.asm'),
-//   await loadBaseRomFile(root, 'MenuBGPatch', 'patches/MenuBGPatch.patch.asm'),
-//   await loadBaseRomFile(root, 'MusicTransitions', 'patches/MusicTransitions.patch.asm'),
-//   await loadBaseRomFile(root, 'NewGamePlus', 'patches/NewGamePlus.patch.asm'),
-//   await loadBaseRomFile(root, 'NGPEpilogueSwitch', 'patches/NGPEpilogueSwitch.patch.asm'),
-//   await loadBaseRomFile(root, 'PixelConverter', 'patches/PixelConverter.patch.asm'),
-//   await loadBaseRomFile(root, 'RunButton', 'patches/RunButton.patch.asm'),
-//   await loadBaseRomFile(root, 'SceneLoadPatch', 'patches/SceneLoadPatch.patch.asm'),
-//   await loadBaseRomFile(root, 'SFXTable', 'patches/SFXTable.patch.asm'),
-//   await loadBaseRomFile(root, 'SouthCapeDeliveryman', 'patches/SouthCapeDeliveryman.patch.asm'),
-//   await loadBaseRomFile(root, 'SpritemapPatch', 'patches/SpritemapPatch.asm'),
-//   await loadBaseRomFile(root, 'Teleporter', 'patches/Teleporter.asm'),
-//   await loadBaseRomFile(root, 'TilemapPatch', 'patches/TilemapPatch.asm'),
-//   await loadBaseRomFile(root, 'TilesetPatch', 'patches/TilesetPatch.asm'),
-//   await loadBaseRomFile(root, 'Utils', 'patches/Utils.asm'),
-// ];
+const CRC = 0x1C3848C0;
 
 
 describe('BlockReader', () => {
@@ -119,7 +52,7 @@ describe('BlockReader', () => {
     });
 
     it('should have a valid crc', () => {
-      expect(crc).toEqual(0x1C3848C0);
+      expect(crc).toEqual(CRC);
     });
   });
 

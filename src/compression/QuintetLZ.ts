@@ -108,8 +108,9 @@ export class QuintetLZ implements ICompressionProvider {
     let offset = QuintetLZ.DICTIONARY_OFFSET;
     let srcIx = srcPosition ?? 0;
     let dstIx = 0;
-
     if(!srcLen) srcLen = srcData.length - srcIx;
+    let endIx = srcIx + srcLen;
+
 
     //const srcLen = srcData.length;
     const outputBuffer = new Uint8Array(srcLen * 2); // Allocate extra space for safety
@@ -125,29 +126,37 @@ export class QuintetLZ implements ICompressionProvider {
      * @returns Tuple of [startByte, length]
      */
     const getCommand = (): [number, number] => {
-      const maxLen = Math.min(srcLen - srcIx, 17);
+      const maxLen = Math.min(endIx - srcIx, 17);
       if (maxLen < 2) {
         return [0, 0];
       }
 
       let startByte = 0;
       let bestLen = 0;
-      let bx = offset;
+      let baseIndex = offset;
 
-      for (let i = 0; i < 0x100; i++, bx = (bx + 1) & 0xFF) {
+      for (let i = 0; i < 0x100; i++, baseIndex = (baseIndex + 1) & 0xFF) {
         let size = 0;
-        let bix = bx;
+        let currentIndex = baseIndex;
+        let sourceIndex = srcIx;
+        let isEnd = false;
 
-        while (size < maxLen && dictionary[bix] === srcData[srcIx + size]) {
-          bix = (bix + 1) & 0xFF;
-          if (bix === offset) {
-            bix = bx;
+        while (size < maxLen) {
+          if(isEnd) { if(srcData[sourceIndex++] !== srcData[srcIx + size]) break; } 
+          else if(dictionary[currentIndex] !== srcData[sourceIndex++]) break; 
+          else {
+            currentIndex = (currentIndex + 1) & 0xFF;
+            if (currentIndex === offset) {
+              sourceIndex = srcIx;
+              isEnd = true;
+            }
           }
+          
           size++;
         }
 
         if (size > bestLen) {
-          startByte = bx;
+          startByte = baseIndex;
           bestLen = size;
 
           if (bestLen >= maxLen) {
@@ -159,7 +168,7 @@ export class QuintetLZ implements ICompressionProvider {
       return [startByte, bestLen];
     };
 
-    while (srcIx < srcLen) {
+    while (srcIx < endIx) {
       const [cmdStart, cmdLen] = getCommand();
 
       if (cmdLen >= 2) {

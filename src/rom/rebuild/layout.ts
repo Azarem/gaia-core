@@ -113,8 +113,9 @@ export class RomLayout {
               this.sfxFiles.unshift(newFile);
               file.rawData = file.rawData!.slice(0, end);
               file.size -= offset;
+              offset = 0;
             }
-            remain = 0;
+            remain = RomProcessingConstants.PAGE_SIZE;
             break;
           } else {
             remain -= file.size;

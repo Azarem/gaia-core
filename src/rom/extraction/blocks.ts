@@ -481,6 +481,8 @@ export class BlockReader {
    * Resolves a single object and its references
    */
   private resolveObject(obj: unknown, isBranch: boolean): void {
+    if(obj === undefined || obj === null) return;
+
     if (typeof obj === 'string') {
       // String objects don't need resolution
       return;
@@ -508,7 +510,17 @@ export class BlockReader {
       return;
     }
 
-    if (obj && typeof obj === 'object') {
+    if (obj instanceof TableEntry) {
+      this.resolveObject(obj.object, isBranch);
+      return;
+    }
+
+    if (obj instanceof Op) {
+      this.resolveOperationObject(obj);
+      return;
+    }
+
+    if (typeof obj === 'object') {
       if ('string' in obj && 'type' in obj) {
         // StringWrapper
         this._stringReader.resolveString(obj as StringWrapper, isBranch);
@@ -518,18 +530,6 @@ export class BlockReader {
       if ('name' in obj && 'parts' in obj) {
         // StructDef
         this.resolveObject((obj as StructDef).parts, isBranch);
-        return;
-      }
-
-      if ('location' in obj && 'object' in obj) {
-        // TableEntry
-        this.resolveObject((obj as TableEntry).object, isBranch);
-        return;
-      }
-
-      if ('code' in obj && 'operands' in obj) {
-        // Op
-        this.resolveOperationObject(obj as Op);
         return;
       }
     }

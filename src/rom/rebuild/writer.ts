@@ -395,8 +395,8 @@ export class RomWriter {
               processObject(obj, parentOp);
             }
             break;
-          } else if (this.isTableEntry(currentObj)) {
-            currentObj = (currentObj as TableEntry).object;
+          } else if (currentObj instanceof TableEntry) {
+            currentObj = currentObj.object;
             continue;
           } else if (currentObj instanceof Op) {
             const op = currentObj as Op;

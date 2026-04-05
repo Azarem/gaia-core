@@ -89,11 +89,17 @@ export class StringProcessor {
     //const shift = this.getShiftUp(stringType.shiftType);
     let lastCmd: DbStringCommand | null = null;
 
+    let fullMatch = false;
     for(const entry of dictionary) {
       let index : number;
       while((index = str.indexOf(entry.text)) >= 0) {
+        if(index === 0 && str.length === entry.text.length) {
+          fullMatch = true;
+          break;
+        }
         str = str.substring(0, index) + `[${(entry.id).toString(16).toUpperCase()}]` + str.substring(index + entry.text.length);
       }
+      if(fullMatch) break;
     }
 
 
@@ -126,7 +132,7 @@ export class StringProcessor {
           continue;
         }
 
-        //Direct values for doctionary commands etc
+        //Direct values for dictionary commands etc
         if(parts.length === 1 && this.testRegex.test(parts[0])) {
           const value = parseInt(parts[0], 16);
           if(value < 0x100) this.memBuffer.push(value);

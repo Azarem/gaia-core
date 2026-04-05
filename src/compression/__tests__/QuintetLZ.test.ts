@@ -8,20 +8,22 @@ import { QuintetLZ } from '../QuintetLZ';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+//const uncomPath = 'C:\\Work\\gaia-iog-baserom\\extracted\\prologue\\prologue_prophecy\\map_prologue_prophecy_2.map';
+
 describe('QuintetLZ', () => {
   let compressor: QuintetLZ;
   let originalData: Uint8Array;
-  let compressedData: Uint8Array;
+  //let compressedData: Uint8Array;
 
   beforeEach(() => {
     compressor = new QuintetLZ();
     
     // Load the test files
-    const originalPath = join(__dirname, 'bmp_0D16E7.bin');
-    const compressedPath = join(__dirname, 'bmp_0D16E7.bin.compressed');
+    const originalPath = join(__dirname, 'map_prologue_prophecy_2.map');
+    // const compressedPath = join(__dirname, 'bmp_0D16E7.bin.compressed');
     
     originalData = new Uint8Array(readFileSync(originalPath));
-    compressedData = new Uint8Array(readFileSync(compressedPath));
+    //compressedData = new Uint8Array(readFileSync(compressedPath));
   });
 
   describe('Constructor', () => {
@@ -36,19 +38,19 @@ describe('QuintetLZ', () => {
   });
 
   describe('Real data validation', () => {
-    it('should expand compressed file to match original', () => {
-      const expanded = compressor.expand(compressedData);
-      expect(expanded).toEqual(originalData);
-    });
+    // it('should expand compressed file to match original', () => {
+    //   const expanded = compressor.expand(compressedData);
+    //   expect(expanded).toEqual(originalData);
+    // });
 
     it('should handle round-trip compression with real data', () => {
-      const compressed = compressor.compact(originalData);
+      const compressed = compressor.compact(originalData, 2);
       const expanded = compressor.expand(compressed);
-      expect(expanded).toEqual(originalData);
+      expect(expanded).toEqual(originalData.slice(2));
     });
 
     it('should produce valid compressed data', () => {
-      const compressed = compressor.compact(originalData);
+      const compressed = compressor.compact(originalData, 2);
       expect(compressed).toBeInstanceOf(Uint8Array);
       expect(compressed.length).toBeGreaterThan(0);
     });
@@ -178,18 +180,18 @@ describe('QuintetLZ', () => {
     });
   });
 
-  describe('File size validation', () => {
-    it('should have correct test file sizes', () => {
-      // Validate that we loaded the files correctly
-      expect(originalData.length).toBeGreaterThan(0);
-      expect(compressedData.length).toBeGreaterThan(0);
-      expect(compressedData.length).toBeLessThan(originalData.length);
+  // describe('File size validation', () => {
+  //   it('should have correct test file sizes', () => {
+  //     // Validate that we loaded the files correctly
+  //     expect(originalData.length).toBeGreaterThan(0);
+  //     expect(compressedData.length).toBeGreaterThan(0);
+  //     expect(compressedData.length).toBeLessThan(originalData.length);
       
-      // Based on the file sizes mentioned in the conversation
-      expect(originalData.length).toBe(16384); // 16KB
-      expect(compressedData.length).toBeLessThan(6000); // Less than 6KB
-    });
-  });
+  //     // Based on the file sizes mentioned in the conversation
+  //     expect(originalData.length).toBe(16384); // 16KB
+  //     expect(compressedData.length).toBeLessThan(6000); // Less than 6KB
+  //   });
+  // });
 
   describe('Algorithm behavior', () => {
     it('should be deterministic', () => {

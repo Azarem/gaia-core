@@ -94,7 +94,7 @@ export class DbStringType {
       return acc;
     }, {} as Record<number, DbStringCommand>);
     this.dictionaryLookup = Object.values(this.dictionaries)
-      .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: (y.command ?? 0 << 8) | (y.base ?? 0 + ix) })))
+      .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: ((y.command ?? 0) << 8) | (y.base ?? 0 + ix) })))
       //.map((y, z) => ({ text: y.entries[z], id: (y.command << 8) | (y.base + z) }))
       .sort((a, b) => b.text.length - a.text.length);
   }

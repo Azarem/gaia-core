@@ -8,17 +8,17 @@ import { fromSupabaseByProject } from '../supabase/rom-loader';
 
 export class RomGenerator {
   //private readonly patchFiles: ChunkFile[] = [];
-  public readonly projectName?: string;
-  public crc: number;
+  public readonly projectName: string;
+  public readonly crc: number;
   //public branchId: string;
   //private chunkFiles: ChunkFile[] = [];
   //private asmFiles: ChunkFile[] = [];
   public dbRoot: DbRoot = {} as DbRoot;
   private sourceData: Uint8Array = new Uint8Array();
 
-  constructor(projectName?: string, crc?: number) {
+  constructor(projectName: string, crc: number) {
     this.projectName = projectName;
-    this.crc = crc ?? 0;
+    this.crc = crc;
   }
 
   // public async initialize(){
@@ -27,16 +27,14 @@ export class RomGenerator {
   //   this.branchId = projectData.id;
   // }
 
-  public async validateAndDownload(sourceData: Uint8Array){
+  public async validateAndDownload(sourceData: Uint8Array): Promise<boolean> {
     const calc = crc32_buffer(sourceData);
-    if (calc === this.crc) {
-        //Initialize database
-        const moduleData = await fromSupabaseByProject(this.projectName);
-        this.dbRoot = DbRootUtils.fromGameModule(moduleData);
-        this.sourceData = sourceData;
-        return true;
-    }
-    return false;
+    if(this.crc !== calc) return false;
+
+    const moduleData = await fromSupabaseByProject(this.projectName);
+    this.dbRoot = DbRootUtils.fromGameModule(moduleData);
+    this.sourceData = sourceData;
+    return true;
   }
 
   public async generateProject(modules: string[], manualFiles?: ChunkFile[], unshiftManualFiles: boolean = false): Promise<Uint8Array> {

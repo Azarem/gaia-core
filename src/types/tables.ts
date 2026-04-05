@@ -4,8 +4,7 @@ export class TableEntry {
   object: unknown;
 
   constructor(location: number) {
-    this.location = location ?? undefined;
-
-    if(this.location === undefined) throw new Error('Location is required');
+    if(typeof location !== 'number') throw new Error('Location is required');
+    this.location = location;
   }
 }

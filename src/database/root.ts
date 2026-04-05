@@ -24,7 +24,7 @@ import { DbScene } from './scenes';
 import { DbGroup } from './groups';
 import { DbAsset } from './assets';
 import { CompressionAlgorithms } from '../compression';
-import { DbGameRomModule } from './modules';
+import { DbBaseRomModule, DbGameRomModule, DbProjectModule } from './modules';
 import { BlockWriter } from '../rom/extraction/writer';
 import { BlockReader } from '../rom/extraction/blocks';
 import { RomWriter } from '../rom/rebuild/writer';
@@ -221,11 +221,13 @@ export class DbRootUtils {
     }, {} as Record<string, CopDef>);
 
     const extLookup = {} as Record<string, DbFileType>;
+    const fileTypeLookup = {} as Record<string, DbFileType>;
     const fileTypes = Object.entries(module.fileTypes).reduce((acc, x) => {
       const fileType = x[1];
       const name = x[0];
       const type = new DbFileType({...fileType, name});
       extLookup[type.extension] = type;
+      fileTypeLookup[type.type] = type;
       acc[name] = type;
       return acc;
     }, {} as Record<string, DbFileType>);
@@ -234,16 +236,39 @@ export class DbRootUtils {
 
     const compression = cfg.compression ? CompressionAlgorithms[cfg.compression]() : undefined;
 
+    
+    const baseRomChunks = (module as DbBaseRomModule).baseRomFiles ?? module.supaBaseRomFiles?.map((file: BaseRomFileData) => {
+      const chunkFile = new ChunkFile(file.name, 0, 0, fileTypeLookup[file.type]);
+      if(file.isText) {
+        chunkFile.textData = file.text ?? undefined;
+        chunkFile.size = file.text?.length ?? 0;
+      } else {
+        chunkFile.rawData = file.data;
+        chunkFile.size = file.data?.length ?? 0;
+      }
+      return chunkFile;
+    });
+    
+    const projectChunks = (module as DbProjectModule).projectFiles ?? module.supaProjectFiles?.map((file: ProjectFileData) => {
+      const chunkFile = new ChunkFile(file.name, 0, 0, fileTypeLookup[file.type]);
+      chunkFile.group = file.module ?? undefined;
+      if(file.isText) {
+        chunkFile.textData = file.text ?? undefined;
+        chunkFile.size = file.text?.length ?? 0;
+      } else {
+        chunkFile.rawData = file.data;
+        chunkFile.size = file.data?.length ?? 0;
+      }
+      return chunkFile;
+    });
+
     // Build the database root
     const root: DbRoot = {
       headers: module.headers.map((h) => new DbHeader(h)),
       mnemonics: module.mnemonics,
       overrides: module.overrides,
       rewrites: module.rewrites,
-      labels: module.labels, //.reduce((acc, x) => {
-      //   acc[x.location] = x.label;
-      //   return acc;
-      // }, {} as Record<number, string>),
+      labels: module.labels,
       structs: structLookup,
       blocks: blocksArray.sort((a, b) => {
         const orderA = a.order ?? 0;
@@ -256,39 +281,19 @@ export class DbRootUtils {
       fileExtLookup: extLookup,
       copDef: copCodes,
       copLookup,
-      // copDef: module.copdef.reduce((acc, x) => {
-      //   acc[x.code] = x;
-      //   return acc;
-      // }, {} as Record<number, CopDef>),
-      // copLookup: module.copdef.reduce((acc, x) => {
-      //   acc[x.mnem] = x;
-      //   return acc;
-      // }, {} as Record<string, CopDef>),
       config: cfg,
       opCodes,
       opLookup,
       addrLookup,
       entryPoints: cfg.entryPoints,
-      //paths: cfg.paths,
-      // stringTypes: stringTypes.reduce((acc, x) => {
-      //   acc[x.name] = x;
-      //   return acc;
-      // }, {} as Record<string, DbStringType>),
       stringTypes: stringLookup,
       stringDelimiters: stringDelimiterList,
       stringDelimiterLookup,
-      // stringCharLookup: Object.values(stringLookup).reduce((acc, x) => {
-      //   acc[x.delimiter] = x;
-      //   return acc;
-      // }, {} as Record<string, DbStringType>),
-      // stringDelimiters: stringTypes.map(x => x.delimiter),
-      // stringCharLookup: stringTypes.reduce((acc, x) => {
-      //   acc[x.delimiter] = x;
-      //   return acc;
-      // }, {} as Record<string, DbStringType>),
       compression,
       groups: groupLookup,
-      scenes: sceneLookup
+      scenes: sceneLookup,
+      baseRomFiles: baseRomChunks,
+      projectFiles: projectChunks
     };
 
     return root;
