@@ -227,7 +227,7 @@ export class DbRootUtils {
       const name = x[0];
       const type = new DbFileType({...fileType, name});
       extLookup[type.extension] = type;
-      fileTypeLookup[type.type] = type;
+      fileTypeLookup[type.name] = type;
       acc[name] = type;
       return acc;
     }, {} as Record<string, DbFileType>);
