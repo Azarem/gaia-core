@@ -16,6 +16,7 @@ describe('RomGenerator', async () => {
     "jp-wall-dunes",
     "red-fountain",
     "jp-church-cross",
+    "jp-prologue-palettes",
     "enhanced-prologue-text",
     "enhanced-epilogue-text",
     "full-health-herb",

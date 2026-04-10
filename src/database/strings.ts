@@ -33,7 +33,7 @@ export interface DbStringLayer {
   base?: number;
   range?: number;
   on?: number;
-  shift?: string;
+  shiftBit?: number;
   map: string[];
 }
 
@@ -99,29 +99,3 @@ export class DbStringType {
       .sort((a, b) => b.text.length - a.text.length);
   }
 }
-
-/**
- * String type utilities
- */
-export class DbStringTypeUtils {
-  // Shift functions (simplified versions of C# implementation)
-  private static readonly shiftDownFunctions: Record<string, (x: number) => number> = {
-    '': (x) => x,
-    'h2': (x) => (((x & 0xE0) >> 1) | (x & 0x0F)),
-    'wh2': (x) => (((x & 0x70) >> 1) | (x & 0x07))
-  };
-
-  private static readonly shiftUpFunctions: Record<string, (x: number) => number> = {
-    '': (x) => x,
-    'h2': (x) => (((x & 0x70) << 1) | (x & 0x0F)),
-    'wh2': (x) => (((x & 0x38) << 1) | (x & 0x07))
-  };
-
-  public static getShiftDown(shiftType?: string): (x: number) => number {
-    return this.shiftDownFunctions[shiftType || ''] || this.shiftDownFunctions[''];
-  }
-
-  public static getShiftUp(shiftType?: string): (x: number) => number {
-    return this.shiftUpFunctions[shiftType || ''] || this.shiftUpFunctions[''];
-  }
-} 

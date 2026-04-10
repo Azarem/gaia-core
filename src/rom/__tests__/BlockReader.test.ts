@@ -306,7 +306,7 @@ describe('BlockReader', () => {
 
       const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
-      expect(crc).toEqual(-2063150219);
+      expect(crc).toEqual(1656812860);
       //1.41
       //expect(crc).toEqual(-1345057874);
     });

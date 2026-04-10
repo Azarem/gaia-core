@@ -9,7 +9,6 @@ import {
   TableEntry 
 } from '../../types';
 import type { DbStringType, DbStringCommand, DbStringLayer } from '../../database';
-import { DbStringTypeUtils } from '../../database';
 import type { StringWrapper } from '../../types';
 import type { BlockReader } from './blocks';
 import { indexOfAny } from '../../utils';
@@ -126,19 +125,22 @@ export class StringReader {
                 found = true;
                 break;
               }
-            } else if(c >= (layer.base ?? 0) && c <= (layer.range ?? 255)){
-              let index = c - (layer.base ?? 0);
-              if(index >= 0 && index < layer.map.length) {
-                if(layer.shift) index = DbStringTypeUtils.getShiftDown(layer.shift)(index);
-                builder.push(layer.map[index]);
-                found = true;
-                break;
-              }
+            } else if(layer.base && c >= layer.base && c < layer.base + layer.map.length){
+              builder.push(layer.map[c - layer.base]);
+              found = true;
+              break;
             }
           }
         }
         if(!found) {
-          const index = currentLayer.shift ? DbStringTypeUtils.getShiftDown(currentLayer.shift)(c) : c - (currentLayer.base ?? 0);
+          let index = c - (currentLayer.base ?? 0);
+          if(typeof currentLayer.shiftBit === 'number') {
+            const shiftBit = 1 << currentLayer.shiftBit;
+            const lowerFlag = shiftBit - 1;
+            const upperFlag = ~shiftBit & ~lowerFlag;
+            index = ((index & upperFlag) >> 1) | (index & lowerFlag);
+          }
+          //const index = currentLayer.shift ? DbStringTypeUtils.getShiftDown(currentLayer.shift)(c) : c - (currentLayer.base ?? 0);
           if (index >= 0 && index < currentLayer.map.length) {
             builder.push(currentLayer.map[index]);
           } else {

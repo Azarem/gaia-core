@@ -1,4 +1,4 @@
-import { DbRoot, DbStringCommand, DbStringLayer, DbStringType, DbStringTypeUtils } from '../../database';
+import { DbRoot, DbStringCommand, DbStringLayer, DbStringType } from '../../database';
 import { MemberType, StringMarker } from '../../types';
 import type { Assembler } from './assembler';
 
@@ -156,7 +156,12 @@ export class StringProcessor {
             }
 
             let value = i + (layer.base ?? 0);
-            if(layer.shift) value = DbStringTypeUtils.getShiftUp(layer.shift)(value);
+            if(typeof layer.shiftBit === 'number') {
+              const shiftBit = 1 << layer.shiftBit;
+              const lowerFlag = shiftBit - 1;
+              const upperFlag = ~lowerFlag;
+              value = ((value & upperFlag) << 1) | (value & lowerFlag);
+            }
             this.memBuffer.push(value);
             found = true; 
             break;
