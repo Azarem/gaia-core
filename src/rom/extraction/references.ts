@@ -72,6 +72,8 @@ export class ReferenceManager {
 
   public createTypeName(type: string, location: number): string {
     let name = type.toLowerCase();
+
+    if (name === 'branch') name = 'loc';
     
     // Handle pointer characters
     while (name.length > 0 && BlockReaderConstants.POINTER_CHARACTERS.includes(name[0])) {

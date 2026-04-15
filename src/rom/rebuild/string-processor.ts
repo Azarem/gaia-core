@@ -213,7 +213,7 @@ export class StringProcessor {
         case MemberType.Offset:
         case MemberType.Address:
           // Have to keep these for later since we don't have lookups yet
-          this.flushBuffer(stringType, false);
+          //this.flushBuffer(stringType, false);
           this.context.currentBlock!.objList.push(parts[pix]);
           this.context.currentBlock!.size += cmd.types[y] === MemberType.Offset ? 2 : 3;
           break;

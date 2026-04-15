@@ -17,7 +17,7 @@ export class RomProcessor {
     this.writer = writer;
   }
 
-  public async repack(allFiles: ChunkFile[]): Promise<Map<string, number>> {
+  public async repack(allFiles: ChunkFile[], modules?: string[]): Promise<Map<string, number>> {
     // Discover files
     //const allFiles = await this.discoverFiles(this.writer._projectRoot.baseDir);
 
@@ -27,6 +27,8 @@ export class RomProcessor {
     const canCompress = !!compression;
     const conditionFiles : string[] = [];
 
+    if(modules) conditionFiles.push(...modules);
+    
     for (const file of allFiles) {
       if (file.type.type === "Patch") {
         patches.push(file);

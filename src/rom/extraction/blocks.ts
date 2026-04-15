@@ -171,7 +171,8 @@ export class BlockReader {
    * Notes a type at a location and manages chunk references
    */
   public noteType(loc: number, type: string, silent: boolean = false, reg?: Registers): string {
-    this._referenceManager.tryAddStruct(loc, type);
+    const oldStruct = this._referenceManager.structTable.get(loc);
+    if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, type);
 
     const nameResult = this._referenceManager.tryGetName(loc);
     let name: string;
@@ -236,10 +237,12 @@ export class BlockReader {
   }
 
   public analyzeAndResolve(): ChunkFile[] {
+    console.log('analyzeAndResolve started');
     this.createChunkFilesFromDatabase();
     this.initializeBlocksAndParts();
     this.analyzeChunkFiles();
     this.resolveReferences();
+    console.log('analyzeAndResolve complete');
     
     return this._enrichedChunks;
   }
@@ -262,6 +265,7 @@ export class BlockReader {
    * Initializes blocks and parts with base references
    */
   private initializeBlocksAndParts(): void {
+    console.log('initializeBlocksAndParts');
     for (const block of this._enrichedChunks) {
       for (const part of block.parts || []) {
         if(part.structName) {
@@ -335,6 +339,7 @@ export class BlockReader {
    * Creates ChunkFile objects from database structure
    */
   private createChunkFilesFromDatabase(): void {
+    console.log('createChunkFilesFromDatabase');
     // Clear any previous results
     this._enrichedChunks = [];
     this.createChunkFilesFromSfx();
@@ -421,6 +426,7 @@ export class BlockReader {
    * Analyzes only assembly ChunkFiles (those with parts from DbBlocks)
    */
   private analyzeChunkFiles(): void {
+    console.log('analyzeChunkFiles');
     // Only process assembly ChunkFiles, skip binary ones
     const assemblyChunks = this._enrichedChunks.filter(chunk => chunk.type.type === 'Assembly');
     
@@ -467,6 +473,7 @@ export class BlockReader {
    * Resolves references in assembly ChunkFiles only
    */
   private resolveReferences(): void {
+    console.log('resolveReferences');
     for (const chunkFile of this._enrichedChunks) {
       this._currentChunk = chunkFile;
       

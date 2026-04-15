@@ -200,6 +200,7 @@ export class AddressingModeHandler {
       : nextAddress + this._dataReader.readSByte();
 
     //this._blockReader.noteType(relative, 'Code', false, reg);
+    this._blockReader._referenceManager.tryAddStruct(relative, 'Branch');
     this._blockReader.updateRegisterState(relative, reg);
     operands.push(new LocationWrapper(relative, isLong ? AddressType.WRelative : AddressType.Relative));
   }

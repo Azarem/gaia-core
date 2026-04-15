@@ -90,6 +90,7 @@ export class TypeParser {
         case MemberType.Binary:
           return this.parseBinary(fixedSize);
         case MemberType.Code:
+        case MemberType.Branch:
           return this.parseCode(reg!);
         default:
           throw new Error('Invalid member type');
@@ -156,7 +157,7 @@ export class TypeParser {
       let checkPosition = startPosition;
       while (++checkPosition < this._romDataReader.position) {
         const struct = this._referenceManager.tryGetStruct(checkPosition)
-        if (struct.found && struct.chunkType !== 'Code') {
+        if (struct.found && struct.chunkType !== 'Code' && struct.chunkType !== 'Branch') {
           this._romDataReader.position = checkPosition;
           break;
         }
@@ -254,7 +255,8 @@ export class TypeParser {
       //const resolvedTypeName = typeName ?? this._blockReader._currentAsmBlock!.structName ?? 'Binary';
 
       // Add the struct type to our chunk table if it is not already present
-      this._referenceManager.tryAddStruct(loc, typeName);
+      const oldStruct = this._referenceManager.structTable.get(loc);
+      if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, typeName);
 
       // If the location is not already in the reference table, add it
       //const referenceName = `${resolvedTypeName.toLowerCase()}_${adrs.toString()}`;
@@ -274,8 +276,9 @@ export class TypeParser {
       // Check the chunk table for a new type block, but not on the first iteration
       if (first) {
         first = false;
-      } else if (this._referenceManager.containsStruct(this._romDataReader.position)) {
-        break;
+      } else {
+        const struct = this._referenceManager.structTable.get(this._romDataReader.position);
+        if (struct && struct !== 'Branch') break;
       }
 
       // Process register adjustments before parse

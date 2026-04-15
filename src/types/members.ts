@@ -9,5 +9,6 @@ export enum MemberType {
   Address = 'Address',
   Binary = 'Binary',
   Code = 'Code',
+  Branch = 'Branch',
   Location = 'Location'
 } 

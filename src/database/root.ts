@@ -299,7 +299,7 @@ export class DbRootUtils {
     return root;
   }
 
-  public static async applyFolder(root: DbRoot, folderPath: string, sourceFiles: ChunkFile[] = []) : Promise<ChunkFile[]> {
+  public static async applyFolder(root: DbRoot, folderPath: string, sourceFiles: ChunkFile[] = [], group?: string) : Promise<ChunkFile[]> {
     const chunkFiles = sourceFiles;
     const folderEntries = await listDirectory(folderPath, { recursive: true });
     for(const entry of folderEntries) {
@@ -310,6 +310,8 @@ export class DbRootUtils {
 
       const existing = chunkFiles.find(x => x.name === entry.name && x.type.type === type.type);
       const chunkFile = existing ?? new ChunkFile(entry.name, 0, 0, type);
+
+      if(group) chunkFile.group = group;
 
       if(chunkFile.type.type === 'Assembly' || chunkFile.type.type === 'Patch') {
         const chunkData = await readFileAsText(entry.path);

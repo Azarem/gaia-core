@@ -520,12 +520,11 @@ export class BlockWriter {
       
       while (mix < marker) {
         if (str[six] === '[') {
-          const eix = str.indexOf(']', ++six);
-          const parts = str.substring(six, eix).split(/[,: ]/);
-          
+          const eix = str.indexOf(']', six);
+          const parts = str.substring(six + 1, eix).split(/[,: ]/);
           const cmd = stringObj.type.commands[parts[0]];
-          if (cmd && (cmd as any).types) {
-            for (const t of (cmd as any).types) {
+          if(cmd) {
+            for (const t of cmd.types) {
               switch (t) {
                 case MemberType.Byte:
                   mix += 1;
@@ -545,6 +544,8 @@ export class BlockWriter {
                   throw new Error('Unsupported member type');
               }
             }
+          } else {
+            mix += parts.length - 1;
           }
           six = eix + 1;
           mix++;
@@ -556,6 +557,22 @@ export class BlockWriter {
       
       str = str.substring(0, six) + '[::]' + str.substring(six);
     }
+
+    //Expand dictionaries
+    const dictionaries = stringObj.type.dictionaries;
+    for(const dictionary of Object.values(dictionaries)) {
+      const commandName = `[${dictionary.commandName ?? dictionary.command?.toString(16).padEnd(2, '0').toUpperCase()}:`;
+      let cmdIx: number;
+      while((cmdIx = str.indexOf(commandName)) >= 0) {
+        const endIx = str.indexOf(']', cmdIx);
+        const strIx = parseInt(str.substring(cmdIx + commandName.length, endIx), 16);
+        const newText = dictionary.entries[strIx];
+        str = str.substring(0, cmdIx) + newText + str.substring(endIx + 1);
+      }
+    }
+
+    //Remove marker bytes
+    str = str.replace(/\[--\]/g, '');
 
     const sizeParam = stringObj.fixedSize ? `(${stringObj.fixedSize})` : '';
 

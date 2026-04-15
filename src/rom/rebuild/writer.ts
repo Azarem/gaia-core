@@ -31,9 +31,9 @@ export class RomWriter {
     this.root = root;
   }
 
-  public async repack(files: ChunkFile[]): Promise<Uint8Array> {
+  public async repack(files: ChunkFile[], modules?: string[]): Promise<Uint8Array> {
     const processor = new RebuildProcessor(this);
-    const masterLookup = await processor.repack(files);
+    const masterLookup = await processor.repack(files, modules);
 
     this.writeHeaders(masterLookup);
 

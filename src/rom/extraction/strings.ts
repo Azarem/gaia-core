@@ -30,7 +30,7 @@ export class StringReader {
 
   private resolveCommand(cmd: DbStringCommand, builder: string[]): void {
     if(cmd.dictionary) {
-      builder.push(cmd.dictionary.entries[this._romDataReader.readByte() - (cmd.dictionary.base ?? 0)]);
+      builder.push(`[${cmd.dictionary.commandName ?? cmd.dictionary.command?.toString(16).padEnd(2, '0').toUpperCase()}:${this._romDataReader.readByte().toString(16).padEnd(2, '0').toUpperCase()}]`);
     } else if (cmd.types && cmd.types.length > 0) {
       builder.push(`[${cmd.name}`);
 
@@ -110,28 +110,22 @@ export class StringReader {
         }
       } else {
         let found = false;
-        for(const dictionary of Object.values(dictionaries)) {
-          if(dictionary.base !== undefined && c >= dictionary.base && c <= dictionary.range) {
-            builder.push(dictionary.entries[c - dictionary.base]);
+
+        for(const layer of stringType.layers) {
+          if(layer.on !== undefined) {
+            if(c === layer.on) {
+              currentLayer = layer;
+              builder.push("[--]");
+              found = true;
+              break;
+            }
+          } else if(layer.base && c >= layer.base && c < layer.base + layer.map.length){
+            builder.push(layer.map[c - layer.base]);
             found = true;
             break;
           }
         }
-        if(!found) {
-          for(const layer of stringType.layers) {
-            if(layer.on !== undefined) {
-              if(c === layer.on) {
-                currentLayer = layer;
-                found = true;
-                break;
-              }
-            } else if(layer.base && c >= layer.base && c < layer.base + layer.map.length){
-              builder.push(layer.map[c - layer.base]);
-              found = true;
-              break;
-            }
-          }
-        }
+        
         if(!found) {
           let index = c - (currentLayer.base ?? 0);
           if(typeof currentLayer.shiftBit === 'number') {
@@ -168,45 +162,45 @@ export class StringReader {
   public resolveString(sw: StringWrapper, isBranch: boolean): void {
     let str = sw.string;
     let ix = indexOfAny(str, StringReader.STRING_REFERENCE_CHARACTERS);
+
+    while(ix >= 0) {
+      if(ix + 6 >= str.length) break;
     
-    while (ix >= 0) {
-      if (ix + 6 < str.length) {
-        const hexStr = str.substring(ix + 1, ix + 7);
-        const sloc = parseInt(hexStr, 16);
+      const hexStr = str.substring(ix + 1, ix + 7);
+      const sloc = parseInt(hexStr, 16);
+
+      if(isNaN(sloc)) break;
+    
+      const addrs = new Address((sloc >> 16) & 0xFF, sloc & 0xFFFF, this._blockReader._root.config.memoryMode);
+      if (addrs.isROM) {
+        this._blockReader.resolveInclude(sloc, false);
+        const name = this._blockReader.resolveName(sloc, AddressType.Unknown, false);
+        const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);
         
-        if (!isNaN(sloc)) {
-          const addrs = new Address((sloc >> 16) & 0xFF, sloc & 0xFFFF, this._blockReader._root.config.memoryMode);
-          if (addrs.isROM) {
-            this._blockReader.resolveInclude(sloc, false);
-            const name = this._blockReader.resolveName(sloc, AddressType.Unknown, false);
-            const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);
-            
-            if (opix > 0) {
-              const offsetStr = name.substring(opix + 1);
-              let offset: number;
-              
-              if (offsetStr === 'M') {
-                offset = this._blockReader._referenceManager.markerTable.get(sloc) || 0;
-              } else {
-                offset = parseInt(offsetStr, 16) || 0;
-              }
+        if (opix > 0) {
+          const offsetStr = name.substring(opix + 1);
+          let offset: number;
+          
+          if (offsetStr === 'M') {
+            offset = this._blockReader._referenceManager.markerTable.get(sloc) || 0;
+          } else {
+            offset = parseInt(offsetStr, 16) || 0;
+          }
 
-              if (name[opix] === '-') {
-                offset = -offset;
-              }
+          if (name[opix] === '-') {
+            offset = -offset;
+          }
 
-              const targetName = name.substring(0, opix);
-              const target = sloc - offset;
-              
-              // Try to find the target using IsOutside pattern
-              const [isOutside, block, part] = ChunkFileUtils.isOutsideWithPart(this._blockReader._enrichedChunks, this._blockReader._currentChunk!, sloc);
-              if (part != null) {
-                const entry = part.objList?.find((x): x is TableEntry => 
-                  typeof x === 'object' && x !== null && 'location' in x && 'object' in x && (x as TableEntry).location === target) as TableEntry | undefined;
-                if (entry && entry.object) {
-                  (entry.object as StringWrapper).marker = offset;
-                }
-              }
+          const targetName = name.substring(0, opix);
+          const target = sloc - offset;
+          
+          // Try to find the target using IsOutside pattern
+          const [isOutside, block, part] = ChunkFileUtils.isOutsideWithPart(this._blockReader._enrichedChunks, this._blockReader._currentChunk!, sloc);
+          if (part != null) {
+            const entry = part.objList?.find((x): x is TableEntry => 
+              typeof x === 'object' && x !== null && 'location' in x && 'object' in x && (x as TableEntry).location === target) as TableEntry | undefined;
+            if (entry && entry.object) {
+              (entry.object as StringWrapper).marker = offset;
             }
           }
         }
