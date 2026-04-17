@@ -238,7 +238,7 @@ export class DbRootUtils {
 
     
     const baseRomChunks = (module as DbBaseRomModule).baseRomFiles ?? module.supaBaseRomFiles?.map((file: BaseRomFileData) => {
-      const chunkFile = new ChunkFile(file.name, 0, 0, fileTypeLookup[file.type]);
+      const chunkFile = new ChunkFile(fileTypeLookup[file.type], file.name);
       if(file.isText) {
         chunkFile.textData = file.text ?? undefined;
         chunkFile.size = file.text?.length ?? 0;
@@ -250,7 +250,7 @@ export class DbRootUtils {
     });
     
     const projectChunks = (module as DbProjectModule).projectFiles ?? module.supaProjectFiles?.map((file: ProjectFileData) => {
-      const chunkFile = new ChunkFile(file.name, 0, 0, fileTypeLookup[file.type]);
+      const chunkFile = new ChunkFile(fileTypeLookup[file.type], file.name);
       chunkFile.group = file.module ?? undefined;
       if(file.isText) {
         chunkFile.textData = file.text ?? undefined;
@@ -309,11 +309,11 @@ export class DbRootUtils {
       if(!type) continue;
 
       const existing = chunkFiles.find(x => x.name === entry.name && x.type.type === type.type);
-      const chunkFile = existing ?? new ChunkFile(entry.name, 0, 0, type);
+      const chunkFile = existing ?? new ChunkFile(type, entry.name);
 
       if(group) chunkFile.group = group;
 
-      if(chunkFile.type.type === 'Assembly' || chunkFile.type.type === 'Patch') {
+      if(chunkFile.type.isBlock || chunkFile.type.isPatch || chunkFile.type.struct) {
         const chunkData = await readFileAsText(entry.path);
         chunkFile.textData = chunkData;
         chunkFile.size = chunkData.length;
@@ -347,7 +347,7 @@ export class DbRootUtils {
       const ext = block.type.extension;
       const filePath = `${outPath}/${block.group ? (block.group + '/') : ''}${block.scene ? (block.scene + '/') : ''}${block.name}${ext ? '.' + ext : ''}`;
       if(block.parts?.length) {
-        if(!block.textData) block.textData = writer.generateAsm(block);
+        block.textData = writer.generateAsm(block);
         await saveFileAsText(filePath, block.textData);
       } else {
         if (!block.rawData) continue;

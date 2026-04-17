@@ -107,6 +107,7 @@ export class BlockWriter {
     }
 
     const lines: string[] = [];
+    this._referenceManager = block.referenceManager!;
 
     // Write bank information if not movable
     if (block.bank !== undefined) {
@@ -187,12 +188,12 @@ export class BlockWriter {
       if (op.mode === 'Immediate') {
         return obj;
       }
-      return this._blockReader.resolveName(obj, AddressType.Address, isBranch);
+      return this._referenceManager.resolveName(obj, AddressType.Address, isBranch);
     }
     
     if (this.getObjectType(obj) === ObjectType.LocationWrapper) {
       const lw = obj as LocationWrapper;
-      return this._blockReader.resolveName(lw.location, lw.type, isBranch);
+      return this._referenceManager.resolveName(lw.location, lw.type, isBranch);
     }
     if (this.getObjectType(obj) === ObjectType.Address) {
       const addr = obj as Address;
@@ -311,7 +312,7 @@ export class BlockWriter {
 
       case ObjectType.LocationWrapper:
         objLines = [
-          this._blockReader.resolveName(
+          this._referenceManager.resolveName(
             (obj as LocationWrapper).location,
             (obj as LocationWrapper).type,
             isBranch
@@ -494,7 +495,7 @@ export class BlockWriter {
         let name = '';
         
         if (adrs.isROM) {
-          name = this._blockReader.resolveName(adrs.toLocation(), addressType, false);
+          name = this._referenceManager.resolveName(adrs.toLocation(), addressType, false);
         } else if(addressType === AddressType.Offset) {
           name = adrs.offset.toString(16).toUpperCase().padStart(4, '0');
         } else {

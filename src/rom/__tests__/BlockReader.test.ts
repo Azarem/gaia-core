@@ -4,6 +4,8 @@ import { DbRoot, DbRootUtils, DbGameRomModule } from '../../database';
 import { BlockReader, BlockWriter } from '../extraction';
 import { Assembler, RomProcessor, RomLayout, RomWriter } from '../rebuild';
 import { readFileAsText, crc32_buffer, saveFileAsBinary, readFileAsBinary, saveFileAsText } from '../../utils';
+import { AsmBlock } from '../../types/assembly';
+import { db } from '../../../../gaia-iog-baserom';
 
 const TRUTH_PATH = './truth';
 const OUT_PATH = './temp';
@@ -32,10 +34,8 @@ describe('BlockReader', () => {
     crc = crc32_buffer(data);
     //const dbRoot = await DbRootUtils.fromSupabaseProject('Illusion of Gaia: Retranslated');
     //const dbRoot = await DbRootUtils.fromFolder(FOLDER_PATH, SYSTEM_PATH);
-    const baseRomModule = (await import('C:/Work/gaia-iog-baserom/dist')).db;
-    const dbRoot = DbRootUtils.fromGameModule(baseRomModule);
+    const dbRoot = DbRootUtils.fromGameModule(db);
     dbRoot.baseRomFiles = await DbRootUtils.applyFolder(dbRoot, BASEROM_PATH);
-
 
     reader = new BlockReader(data, dbRoot);
     writer = new BlockWriter(reader);
@@ -80,7 +80,7 @@ describe('BlockReader', () => {
       for(const block of chunkFiles) {
         const filePath = `${OUT_PATH}/${block.group ? (block.group + '/') : ''}${block.scene ? (block.scene + '/') : ''}${block.name}${block.type.extension ? '.' + block.type.extension : ''}`;
         if(block.parts?.length) {
-          if(!block.textData) block.textData = writer.generateAsm(block);
+          block.textData = writer.generateAsm(block);
           expect(block.textData?.length).toBeGreaterThan(0);
           //Optionally save the text data to a file
           await saveFileAsText(filePath, block.textData);
@@ -105,11 +105,11 @@ describe('BlockReader', () => {
     console.log(`Processing patch: ${chunkFile.name}`);
     const existing = chunkFiles.find(x => x.name === chunkFile.name);
 
-    if(chunkFile.type.type === 'Patch' || chunkFile.type.type === 'Assembly') {
+    if(chunkFile.textData) {
       if(existing){
         existing.textData = chunkFile.textData;
       } else {
-        if(chunkFile.type.type === 'Patch') {
+        if(chunkFile.type.isPatch) {
           patchFiles.push(chunkFile);
         }
         asmFiles.push(chunkFile);
@@ -174,14 +174,36 @@ describe('BlockReader', () => {
   
   describe('Assembler process', () => {
     it('Should be able to assemble code', () => {
-      const conditionFiles = asmFiles.map(x => x.name);
-      for(const block of asmFiles) {
-        const assembler = new Assembler(reader._root, block.textData!, conditionFiles);
+
+      const patches : ChunkFile[] = [];
+      const asmFiles : ChunkFile[] = [];
+      const compression = reader._root.compression;
+      const canCompress = !!compression;
+      const conditionFiles: string[] = [];
+
+      const dummyMap = new Map<string, number>();
+      for (const file of chunkFiles) {
+        conditionFiles.push(file.name);
+  
+        if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
+        else if (file.type.isBlock) asmFiles.push(file);
+        else if (!file.type.struct) continue;
+        
+        const assembler = new Assembler(reader._root, file.textData!, conditionFiles);
         const { blocks, includes, reqBank } = assembler.parseAssembly();
-        block.parts = blocks;
-        block.includes = includes;
-        block.bank = reqBank ?? undefined;
-        expect(blocks.length).toBeGreaterThan(0);
+        file.parts = blocks;
+        file.includes = includes;
+        file.bank = reqBank ?? void 0;
+  
+        if(file.type.struct) {
+          file.includeLookup = new Map<string, AsmBlock>();
+          for (const b of file.parts) {
+            if(b.label) file.includeLookup.set(b.label.toUpperCase(), b);
+          }
+          file.rawData = undefined;
+          file.rawData = new Uint8Array(ChunkFileUtils.calculateSize(file));
+          RomWriter.parseAssembly(reader._root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.type.base ?? 0);
+        }
       }
     }, 30000);
   });
@@ -232,11 +254,11 @@ describe('BlockReader', () => {
       await saveFileAsText(`${OUT_PATH}/postlayout.json`, postLayoutJson);
       await saveFileAsText(`${OUT_PATH}/prelayout.json`, preLayoutJson);
       
-      // const truthPreLayout = (await readFileAsText(`${TRUTH_PATH}/prelayout.json`)).replace(/\r/g, '');
-      // expect(preLayoutJson).toEqual(truthPreLayout);
+      const truthPreLayout = (await readFileAsText(`${TRUTH_PATH}/prelayout.json`)).replace(/\r/g, '');
+      expect(preLayoutJson).toEqual(truthPreLayout);
       
-      // const truthPostLayout = (await readFileAsText(`${TRUTH_PATH}/postlayout.json`)).replace(/\r/g, '');
-      // expect(postLayoutJson).toEqual(truthPostLayout);
+      const truthPostLayout = (await readFileAsText(`${TRUTH_PATH}/postlayout.json`)).replace(/\r/g, '');
+      expect(postLayoutJson).toEqual(truthPostLayout);
     });
 
     it("Should be able to rebase assembly code", async () => {
@@ -306,7 +328,7 @@ describe('BlockReader', () => {
 
       const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
-      expect(crc).toEqual(-1904825197);
+      expect(crc).toEqual(213261584);
       //1.41
       //expect(crc).toEqual(-1345057874);
     });

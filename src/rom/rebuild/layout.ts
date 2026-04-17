@@ -41,8 +41,8 @@ export class RomLayout {
     this.unmatchedFiles = files.filter(x => (x.size || 0) > 0)
       .filter(x => this.sfxPackType === 'Individual' || x.type.type !== 'Sound')
       .sort((a, b) => {
-        const aAsm = a.parts ? 0 : 1;
-        const bAsm = b.parts ? 0 : 1;
+        const aAsm = a.rawData ? 1 : 0;
+        const bAsm = b.rawData ? 1 : 0;
         if (aAsm !== bAsm) return aAsm - bAsm;
         if (b.size !== a.size) return b.size - a.size;
         if (a.location !== b.location) return a.location - b.location;
@@ -106,7 +106,7 @@ export class RomLayout {
             page++;
 
             if(offset) {
-              const newFile = new ChunkFile(file.name + "_2", file.size, file.location, Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!);
+              const newFile = new ChunkFile(Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!, file.name + "_2", file.size, file.location);
               const end = file.rawData!.length - offset;
               newFile.rawData = file.rawData!.slice(end);
               newFile.size = newFile.rawData.length;

@@ -174,7 +174,7 @@ export class StringReader {
       const addrs = new Address((sloc >> 16) & 0xFF, sloc & 0xFFFF, this._blockReader._root.config.memoryMode);
       if (addrs.isROM) {
         this._blockReader.resolveInclude(sloc, false);
-        const name = this._blockReader.resolveName(sloc, AddressType.Unknown, false);
+        const name = this._blockReader._referenceManager.resolveName(sloc, AddressType.Unknown, false);
         const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);
         
         if (opix > 0) {

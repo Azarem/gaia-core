@@ -8,26 +8,19 @@ import { AsmReader } from './asm';
 import { TypeParser } from './parser';
 import { 
   Address, 
-  AddressType, 
   LocationWrapper, 
   StructDef, 
-  RegisterType,
   BlockReaderConstants,
   RomProcessingConstants,
   TableEntry,
   BinType,
   AsmBlock,
-  createChunkFileFromDbFile,
-  createChunkFileFromDbBlock,
   StatusFlags,
 } from '../../types';
 import type { StringWrapper } from '../../types';
-import type { DbRoot, DbFile } from '../../database';
-import type { DbBlock } from '../../database';
-import type { DbPart } from '../../database';
+import type { DbRoot } from '../../database';
 import { ChunkFile, ChunkFileUtils } from '../../types/files';
-import { indexOfAny, saveFileAsBinary, saveFileAsText } from '../../utils';
-import { BlockWriter } from './writer';
+import { indexOfAny } from '../../utils';
 
 /**
  * Central class for reading and analyzing ROM blocks
@@ -49,10 +42,10 @@ export class BlockReader {
   public readonly _root: DbRoot;
   public readonly _stringReader: StringReader;
   public readonly _asmReader: AsmReader;
-  public readonly _typeParser: TypeParser;
-  public readonly _romDataReader: RomDataReader;
+  public _typeParser: TypeParser;
+  public _romDataReader: RomDataReader;
   public readonly _stateManager: ProcessorStateManager;
-  public readonly _referenceManager: ReferenceManager;
+  public _referenceManager: ReferenceManager;
 
   // Current Processing State (Database)
   //public _currentBlock!: DbBlock;
@@ -73,9 +66,6 @@ export class BlockReader {
     this._stringReader = new StringReader(this as any);
     this._asmReader = new AsmReader(this as any);
     this._typeParser = new TypeParser(this as any);
-
-    this.initializeOverrides();
-    this.initializeFileReferences();
   }
 
   /**
@@ -148,9 +138,9 @@ export class BlockReader {
   /**
    * Resolves name for a location (delegated to ReferenceManager)
    */
-  public resolveName(location: number, type: AddressType, isBranch: boolean): string {
-    return this._referenceManager.resolveName(location, type, isBranch);
-  }
+  // public resolveName(location: number, type: AddressType, isBranch: boolean): string {
+  //   return this._referenceManager.resolveName(location, type, isBranch);
+  // }
 
   /**
    * Resolves include for a location
@@ -238,6 +228,8 @@ export class BlockReader {
 
   public analyzeAndResolve(): ChunkFile[] {
     console.log('analyzeAndResolve started');
+    this.initializeOverrides();
+    this.initializeFileReferences();
     this.createChunkFilesFromDatabase();
     this.initializeBlocksAndParts();
     this.analyzeChunkFiles();
@@ -281,7 +273,7 @@ export class BlockReader {
   /**
    * Processes a single part
    */
-  private processPart(part: AsmBlock): void {
+  public processPart(part: AsmBlock): void {
     this._currentAsmBlock = part;
     this._romDataReader.position = part.location;
     this._partEnd = part.location + part.size;
@@ -395,7 +387,7 @@ export class BlockReader {
       const startPos = pos + offset;
       const data = getBytes(size);
 
-      const chunk = new ChunkFile(`sfx${i.toString(16).toUpperCase().padStart(2, '0')}`, size, startPos, fileType);
+      const chunk = new ChunkFile(fileType, `sfx${i.toString(16).toUpperCase().padStart(2, '0')}`, size, startPos);
       chunk.rawData = data;
       chunk.group = 'sfx';
       this._enrichedChunks.push(chunk);
@@ -407,7 +399,9 @@ export class BlockReader {
    */
   private createChunkFilesFromDbFiles(): void {
     for (const dbFile of this._root.files) {
-      const chunkFile = createChunkFileFromDbFile(this._romDataReader.romData, this._root.compression, dbFile, this._root.fileTypes[dbFile.type]);
+      const fileType = this._root.fileTypes[dbFile.type];
+      const chunkFile = new ChunkFile(fileType, dbFile.name);
+      chunkFile.enrichWithRawDataFromDbFile(dbFile, this._romDataReader.romData, this._root.compression);
       this._enrichedChunks.push(chunkFile);
     }
   }
@@ -418,7 +412,8 @@ export class BlockReader {
   private createChunkFilesFromDbBlocks(): void {
     const fileType = Object.values(this._root.fileTypes).find(x => x.isBlock)!;
     for (const block of this._root.blocks) {
-      const chunkFile = createChunkFileFromDbBlock(block, fileType, this._root.config.memoryMode);
+      const chunkFile = new ChunkFile(fileType, block.name);
+      chunkFile.enrichWithAsmBlocksFromDbBlock(block, this._root.config.memoryMode);
       this._enrichedChunks.push(chunkFile);
     }
   }
@@ -427,47 +422,38 @@ export class BlockReader {
    */
   private analyzeChunkFiles(): void {
     console.log('analyzeChunkFiles');
-    // Only process assembly ChunkFiles, skip binary ones
-    const assemblyChunks = this._enrichedChunks.filter(chunk => chunk.type.type === 'Assembly');
     
-    for (const chunkFile of assemblyChunks) {
+    for (const chunkFile of this._enrichedChunks) {
+      if(!chunkFile.type.isBlock) continue;
+      chunkFile.referenceManager = this._referenceManager;
       this._currentChunk = chunkFile;
       for (const asmBlock of chunkFile.parts || []) {
         this._currentAsmBlock = asmBlock;
         this.processPart(asmBlock);
       }
     }
+
+    const oldState = this._referenceManager;
+    const oldReader = this._romDataReader;
+    const oldTypeParser = this._typeParser;
+    
+    for (const chunkFile of this._enrichedChunks) {
+      if(!chunkFile.type.struct) continue;
+      this._currentChunk = chunkFile;
+
+      const asmBlock = new AsmBlock(0, chunkFile.size, false, chunkFile.name, chunkFile.type.struct);
+      chunkFile.parts = [asmBlock];
+      this._currentAsmBlock = asmBlock;
+      this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);
+      this._romDataReader = new RomDataReader(chunkFile.rawData!, chunkFile.base ?? 0);
+      this._typeParser = new TypeParser(this);
+      this.processPart(asmBlock);
+    }
+
+    this._referenceManager = oldState;
+    this._romDataReader = oldReader;
+    this._typeParser = oldTypeParser;
   }
-
-  // /**
-  //  * Processes a single AsmBlock (similar to processPart)
-  //  */
-  // private processAsmBlock(asmBlock: AsmBlock): void {
-  //   this._romDataReader.position = asmBlock.location;
-  //   this._partEnd = asmBlock.location + asmBlock.size;
-
-  //   let current = asmBlock.structName || BlockReaderConstants.BINARY_TYPE;
-  //   const chunks: TableEntry[] = [];
-  //   const reg = new Registers();
-  //   const bank = this._currentAsmBlock?.bank;
-  //   let last: TableEntry | null = null;
-
-  //   while (this._romDataReader.position < this._partEnd) {
-  //     const structResult = this._referenceManager.tryGetStruct(this._romDataReader.position);
-  //     if (structResult.found) {
-  //       current = structResult.chunkType!;
-  //     } else if (last !== null) {
-  //       this.processContinuousEntry(current, reg, bank, last);
-  //       continue;
-  //     }
-
-  //     last = createTableEntry(this._romDataReader.position);
-  //     chunks.push(last);
-  //     this.processNewEntry(current, reg, bank, last);
-  //   }
-
-  //   asmBlock.objList = chunks;
-  // }
 
   /**
    * Resolves references in assembly ChunkFiles only
@@ -475,9 +461,9 @@ export class BlockReader {
   private resolveReferences(): void {
     console.log('resolveReferences');
     for (const chunkFile of this._enrichedChunks) {
+      if(!chunkFile.type.isBlock) continue;
       this._currentChunk = chunkFile;
-      
-      for (const asmBlock of chunkFile.parts || []) {
+      for (const asmBlock of chunkFile.parts!) {
         this._currentAsmBlock = asmBlock;
         this.resolveObject(asmBlock.objList, false);
       }

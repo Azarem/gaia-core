@@ -327,7 +327,7 @@ export class RomWriter {
         }
         
         // Parse assembly parts
-        this.parseAssembly(file.parts, fileLookup, file.includeLookup!);
+        RomWriter.parseAssembly(this.root, file.parts, fileLookup, file.includeLookup!, this.outBuffer!, undefined);
       }
     }
 
@@ -345,41 +345,15 @@ export class RomWriter {
    * Parse assembly blocks and write binary data to output buffer
    * Converted from ext/GaiaLib/Rom/Rebuild/RomWriter.cs ParseAssembly method
    */
-  private parseAssembly(blocks: AsmBlock[], fileLookup: Map<string, number>, includeLookup: Map<string, AsmBlock>): void {
+  public static parseAssembly(root: DbRoot, blocks: AsmBlock[], fileLookup: Map<string, number>, includeLookup: Map<string, AsmBlock>, outBuffer: Uint8Array, addrOffset?: number): void {
     if (!blocks) {
       throw new Error('Assembly has not been parsed');
     }
 
-    const buf = this.outBuffer!;
-
     let bix = 0;
-    // let inCondition = false;
-    // let exitCondition = false;
 
     for (const block of blocks) {
-
-      // if(inCondition) {
-      //   if(block instanceof ConditionBlock) {
-      //     if(exitCondition) continue;
-      //     if(block.condition) {
-      //       if(!fileLookup.has(block.condition) && !includeLookup.has(block.condition)) continue;
-      //       exitCondition = true; //If condition passes, set exit flag
-      //     } else inCondition = false;
-      //   } else {
-      //     inCondition = false;
-      //     exitCondition = false;
-      //   }
-      // } else if(block instanceof ConditionBlock) {
-      //   inCondition = true;
-      //   exitCondition = false;
-      //   if(!fileLookup.has(block.condition) && !includeLookup.has(block.condition)) continue;
-      //   exitCondition = true;
-      // }
-
-      let oldPos: number | null = null;
       let position = block.location; // Always start at block's absolute location
-      
-      // Note: C# version had position management logic, but we always use block.location
 
       const objList = block.objList;
       let oix = 0;
@@ -400,7 +374,7 @@ export class RomWriter {
             continue;
           } else if (currentObj instanceof Op) {
             const op = currentObj as Op;
-            buf[position++] = op.code & 0xFF;
+            outBuffer[position++] = op.code & 0xFF;
             opos += op.size;
 
             for (const operand of op.operands) {
@@ -410,7 +384,7 @@ export class RomWriter {
           } else if (currentObj instanceof Uint8Array) {
             const arr = currentObj as Uint8Array;
             for (let i = 0; i < arr.length; i++) {
-              buf[position + i] = arr[i];
+              outBuffer[position + i] = arr[i];
             }
             position += arr.length;
             opos += arr.length;
@@ -433,7 +407,7 @@ export class RomWriter {
               (parentOp.mode === 'PCRelative' || 
                parentOp.mode === 'PCRelativeLong');
 
-            const operatorIdx = this.indexOfAny(label, RomProcessingConstants.OPERATORS);
+            const operatorIdx = RomWriter.indexOfAny(label, RomProcessingConstants.OPERATORS);
             let offset: number | null = null;
             let useMarker = false;
 
@@ -511,7 +485,7 @@ export class RomWriter {
             } else if (useMarker && target instanceof AsmBlock) {
               let markerOffset = 0;
               for (const part of target.objList) {
-                if (this.isStringMarker(part)) {
+                if (RomWriter.isStringMarker(part)) {
                   loc += markerOffset;
                   break;
                 } else {
@@ -520,8 +494,11 @@ export class RomWriter {
               }
             }
 
-            if(!isRelative && type !== AddressType.Location) {
-              const address = Address.fromLocation(loc, this.root.config.memoryMode, this.root.config.cpuMode);
+            if(addrOffset !== undefined) {
+              loc += addrOffset;
+            }
+            else if(!isRelative && type !== AddressType.Location) {
+              const address = Address.fromLocation(loc, root.config.memoryMode, root.config.cpuMode);
               loc = address.toInt();
             }
 
@@ -550,7 +527,7 @@ export class RomWriter {
           } else if (currentObj instanceof TypedNumber) {
             let value = currentObj.value;
             for (let i = 0; i < currentObj.size; i++) {
-              buf[position++] = value & 0xFF;
+              outBuffer[position++] = value & 0xFF;
               value >>= 8;
             }
             break;
@@ -560,29 +537,29 @@ export class RomWriter {
             
             if (num <= 0xFF && size <= 2) {
               // byte
-              buf[position] = num & 0xFF;
+              outBuffer[position] = num & 0xFF;
               position++;
             } else if (num <= 0xFFFF && size <= 3) {
               // ushort
-              buf[position] = num & 0xFF;
-              buf[position + 1] = (num >> 8) & 0xFF;
+              outBuffer[position] = num & 0xFF;
+              outBuffer[position + 1] = (num >> 8) & 0xFF;
               position += 2;
             } else if (num <= 0xFFFFFF && size <= 4) {
               // 3-byte
-              buf[position] = num & 0xFF;
-              buf[position + 1] = (num >> 8) & 0xFF;
-              buf[position + 2] = (num >> 16) & 0xFF;
+              outBuffer[position] = num & 0xFF;
+              outBuffer[position + 1] = (num >> 8) & 0xFF;
+              outBuffer[position + 2] = (num >> 16) & 0xFF;
               position += 3;
             } else {
               // 4-byte
-              buf[position] = num & 0xFF;
-              buf[position + 1] = (num >> 8) & 0xFF;
-              buf[position + 2] = (num >> 16) & 0xFF;
-              buf[position + 3] = (num >> 24) & 0xFF;
+              outBuffer[position] = num & 0xFF;
+              outBuffer[position + 1] = (num >> 8) & 0xFF;
+              outBuffer[position + 2] = (num >> 16) & 0xFF;
+              outBuffer[position + 3] = (num >> 24) & 0xFF;
               position += 4;
             }
             break;
-          } else if (this.isStringMarker(currentObj)) {
+          } else if (RomWriter.isStringMarker(currentObj)) {
             // StringMarker - no operation needed
             break;
           } else {
@@ -605,7 +582,7 @@ export class RomWriter {
   /**
    * Helper method to find index of any character from an array in a string
    */
-  private indexOfAny(str: string, chars: string[]): number {
+  public static indexOfAny(str: string, chars: string[]): number {
     for (let i = 0; i < str.length; i++) {
       if (chars.includes(str[i])) {
         return i;
@@ -617,11 +594,11 @@ export class RomWriter {
   /**
    * Helper method to check if an object is a StringMarker
    */
-  private isStringMarker(obj: unknown): obj is StringMarker {
+  public static isStringMarker(obj: unknown): obj is StringMarker {
     return typeof obj === 'object' && obj !== null && 'offset' in obj;
   }
 
-  private isTableEntry(obj: unknown): obj is TableEntry {
+  public static isTableEntry(obj: unknown): obj is TableEntry {
     return typeof obj === 'object' && obj !== null && 'location' in obj && 'object' in obj;
   }
 }

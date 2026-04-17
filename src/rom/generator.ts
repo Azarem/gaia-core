@@ -54,13 +54,15 @@ export class RomGenerator {
     //Initialize chunks
     const reader = new BlockReader(this.sourceData, this.dbRoot);
     const chunkFiles = reader.analyzeAndResolve();
-    const asmFiles = chunkFiles.filter(b => b.type.type === 'Assembly');
+    const asmFiles = chunkFiles.filter(b => b.type.isBlock);
     const patchFiles: ChunkFile[] = [];
 
     //Convert asm blocks to text
     const writer = new BlockWriter(reader);
-    for(const block of asmFiles) block.textData = writer.generateAsm(block);
-    
+    for(const block of chunkFiles) {
+      if(block.parts?.length) block.textData = writer.generateAsm(block);
+    }
+
     //Apply baserom files
     for (const chunkFile of this.dbRoot.baseRomFiles!) this.applyPatchFile(chunkFile, chunkFiles, asmFiles, patchFiles);
 
@@ -115,7 +117,7 @@ export class RomGenerator {
       if(existing){
         existing.textData = chunkFile.textData;
       } else {
-        if(chunkFile.type.type === 'Patch') {
+        if(chunkFile.type.isPatch) {
           patchFiles.push(chunkFile);
         }
         asmFiles.push(chunkFile);

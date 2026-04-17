@@ -29,33 +29,42 @@ export class RomProcessor {
 
     if(modules) conditionFiles.push(...modules);
     
+    const dummyMap = new Map<string, number>();
     for (const file of allFiles) {
-      if (file.type.type === "Patch") {
-        patches.push(file);
-      } else if (file.type.type !== "Assembly") {
-        if(file.compressed === true && canCompress) {
-          if(this.writer.root.config.uncompress){
-            file.compressed = false;
-          } else {
-            let newData = compression!.compact(file.rawData!, file.type.header);
-            if(file.type.header) newData = new Uint8Array([...file.rawData!.slice(0, file.type.header), ...newData]);
-            file.rawData = newData;
-            file.size = newData.length;
-          }
-        }
-        continue;
-      }
-      
-      asmFiles.push(file);
       conditionFiles.push(file.name);
-    }
 
-    for(const file of asmFiles) {
+      if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
+      else if (file.type.isBlock) asmFiles.push(file);
+      else if (!file.type.struct) continue;
+      
       const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
       const { blocks, includes, reqBank } = assembler.parseAssembly();
       file.parts = blocks;
       file.includes = includes;
       file.bank = reqBank ?? void 0;
+
+      if(file.type.struct) {
+        file.includeLookup = new Map<string, AsmBlock>();
+        for (const b of file.parts) {
+          if(b.label) file.includeLookup.set(b.label.toUpperCase(), b);
+        }
+        file.rawData = undefined;
+        file.rawData = new Uint8Array(ChunkFileUtils.calculateSize(file));
+        RomWriter.parseAssembly(this.writer.root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.type.base ?? 0);
+      }
+    }
+
+    for(const file of allFiles) {
+      if(file.compressed === true && canCompress) {
+        if(this.writer.root.config.uncompress){
+          file.compressed = false;
+        } else {
+          let newData = compression!.compact(file.rawData!, file.type.header);
+          if(file.type.header) newData = new Uint8Array([...file.rawData!.slice(0, file.type.header), ...newData]);
+          file.rawData = newData;
+          file.size = newData.length;
+        }
+      }
     }
 
     // const patches = allFiles.filter(x => x.type.type === 'Patch');

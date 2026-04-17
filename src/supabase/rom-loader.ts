@@ -954,6 +954,7 @@ export async function summaryFromSupabaseByProject(projectName?: string): Promis
             notes,
             gameRomId,
             platformBranchId,
+            fileTypes,
             createdAt,
             updatedAt,
             gameRom:GameRom!inner(

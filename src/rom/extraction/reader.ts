@@ -3,15 +3,17 @@
  * Converted from GaiaLib/Rom/Extraction/RomDataReader.cs
  */
 export class RomDataReader {
-  public readonly romData: Uint8Array;
+  public romData: Uint8Array;
   public position: number;
+  public offset: number;
 
-  constructor(romData: Uint8Array) {
+  constructor(romData: Uint8Array, offset: number = 0) {
     if (!romData) {
       throw new Error('romData cannot be null');
     }
     this.romData = romData;
     this.position = 0;
+    this.offset = offset;
   }
 
   public readByte(): number {

@@ -14,10 +14,7 @@ import {
   Byte,
   Word,
 } from '../../types';
-import type { DbRoot, DbBlock, DbPart } from '../../database';
-import type { DbStruct } from '../../database';
 import type { DbStringType } from '../../database';
-import { AsmReader } from './asm';
 import type { BlockReader } from './blocks';
 
 /**
@@ -224,9 +221,11 @@ export class TypeParser {
       return new Word(offset);
     }
 
+    offset -= this._romDataReader.offset;
+
     let adrs: Address;
     let loc: number;
-    if(addrType === AddressType.Location) {
+    if(addrType === AddressType.Location || this._romDataReader.offset) {
       loc = offset | (bank! << 16);
       //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
     } else {
@@ -248,8 +247,8 @@ export class TypeParser {
     if (
       //this._blockReader._currentChunk &&
       //ChunkFileUtils.isInside(this._blockReader._currentChunk, loc) &&
-      typeName &&
-      !this._blockReader._root.rewrites[loc]
+      typeName && 
+      (this._romDataReader.offset || !this._blockReader._root.rewrites[loc])
     ) {
       // Normalize the type name to default to current part definition
       //const resolvedTypeName = typeName ?? this._blockReader._currentAsmBlock!.structName ?? 'Binary';
