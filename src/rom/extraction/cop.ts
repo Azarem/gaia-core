@@ -28,7 +28,23 @@ export class CopCommandProcessor {
    * Parses a COP command based on its definition
    */
   public parseCopCommand(copDef: CopDef, operands: unknown[]): void {
-    for (let partStr of copDef.parts) {
+
+    let parts = copDef.parts;
+
+    if(copDef.conditions) {
+      for(const condition of copDef.conditions) {
+        let value = this._romDataReader.romData[this._romDataReader.position + condition.offset];
+        if(condition.value >= 256) {
+          value |= this._romDataReader.romData[this._romDataReader.position + condition.offset + 1] << 8;
+        }
+        if(value === condition.value) {
+          parts = condition.parts;
+          break;
+        }
+      }
+    }
+
+    for (let partStr of parts) {
       let bank : number | null = null;
 
       //Trim the end for bank hints

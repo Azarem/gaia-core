@@ -169,8 +169,9 @@ export class RomProcessor {
         } else if (dstIx >= 0) {
           file!.parts!.splice(dstIx++, 0, block);
         } else { ix++; continue; }
-        file!.includes = file!.includes || new Set();
+        if(!file!.includes) file!.includes = new Set();
         file!.includes.add(patch.name.toUpperCase());
+        //for(const include of patch.includes!) file!.includes.add(include);
         patch.parts!.splice(ix, 1);
       }
     }

@@ -72,6 +72,11 @@ export class StackOperations {
       case 'XBA':
         this.handleExchangeBytes();
         break;
+
+      case 'RTL':
+      case 'RTS':
+        this._blockReader._referenceManager.tryAddStruct(this._blockReader._romDataReader.position, 'Code');
+        break;
     }
   }
 

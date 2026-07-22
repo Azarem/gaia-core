@@ -1,6 +1,8 @@
 import { AddressType, Address } from '../../types';
 import { BlockReaderConstants } from '../../types/constants';
 import type { DbRoot } from '../../database';
+import { ChunkFileUtils } from '../../types/files';
+import type { ChunkFile } from '../../types/files';
 
 /**
  * Manages references, chunks, and markers during ROM analysis
@@ -10,6 +12,7 @@ export class ReferenceManager {
   public readonly structTable = new Map<number, string>();
   public readonly markerTable = new Map<number, number>();
   public readonly nameTable = new Map<number, string>();
+  public readonly fileTable = new Map<number, string>();
   private readonly root: DbRoot;
 
   constructor(root: DbRoot) {
@@ -114,7 +117,7 @@ export class ReferenceManager {
 
   public resolveName(location: number, type: AddressType, isBranch: boolean): string {
     const prefix = Address.codeFromType(type);
-    let name: string;
+    let name: string | null = null;
     let label: string | null = null;
     let resolvedLocation = location;
 
@@ -126,11 +129,12 @@ export class ReferenceManager {
       label = result.label;
     }
 
+    //name = ChunkFileUtils.isOutside(block, resolvedLocation) && this.fileTable.get(resolvedLocation) || null;
+    
     // Try to get existing reference
-    const existingName = this.nameTable.get(resolvedLocation);
-    if (existingName) {
-      name = existingName;
-    } else {
+    name = this.nameTable.get(resolvedLocation) || null;
+
+    if (!name) {
       name = isBranch ? 
         this.createBranchLabel(resolvedLocation) : 
         this.findClosestReference(resolvedLocation) || this.createFallbackName(resolvedLocation);

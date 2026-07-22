@@ -178,6 +178,7 @@ export class AddressingModeHandler {
       if (this.isJumpInstruction(mnemonic)) {
         this._blockReader.noteType(wrapper.location, 'Code', false, reg);
       }
+      if(mnemonic === 'JML') this._blockReader._referenceManager.tryAddStruct(this._dataReader.position, 'Code');
       operands.push(wrapper);
     } else {
       operands.push(address);
@@ -247,7 +248,10 @@ export class AddressingModeHandler {
     }
 
     const isJump = isPush || isIndexedIndirect || this.isJumpInstruction(mnemonic);
-    const resolvedBank = xBank1 ?? (isJump ? Address.resolveBank(this._dataReader.position, registers.mode) : dataBank) ?? 0x81;
+    const resolvedBank = xBank1 
+      ?? (isJump ? Address.resolveBank(this._dataReader.position, registers.mode) : dataBank) 
+      ?? this._blockReader._root.config.defaultBank
+      ?? 0x81;
 
     const addr = new Address(resolvedBank, refLoc, registers.mode);
     if (addr.isROM) {
@@ -255,6 +259,7 @@ export class AddressingModeHandler {
       if (isJump) {
         const type = isIndexedIndirect ? '&Code' : 'Code';
         const name = this._blockReader.noteType(wrapper.location, type, isPush, registers);
+        if(mnemonic === 'JMP') this._blockReader._referenceManager.tryAddStruct(this._dataReader.position, 'Code');
 
         if (isPush) {
           operands.push(`&${name}-1`);

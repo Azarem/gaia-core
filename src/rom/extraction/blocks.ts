@@ -99,11 +99,11 @@ export class BlockReader {
   /**
    * Processes predefined file references
    */
-  private initializeFileReferences(): void {
-    for (const file of this._root.files) {
-      this._referenceManager.tryAddName(file.start, file.name);
-    }
-  }
+  // private initializeFileReferences(): void {
+  //   for (const file of this._root.files) {
+  //     this._referenceManager.tryAddName(file.start, file.name);
+  //   }
+  // }
 
   /**
    * Resolves mnemonic for a given address
@@ -148,6 +148,7 @@ export class BlockReader {
   public resolveInclude(loc: number, isBranch: boolean): void {
     const [outside, foundBlock, foundPart] = ChunkFileUtils.isOutsideWithPart(this._enrichedChunks, this._currentChunk!, loc);
     if (outside && foundBlock && foundPart) {
+      //if(foundBlock.location === loc) return; //Defer to direct file references
       this._currentAsmBlock!.includes!.add({block: foundBlock, part: foundPart});
     } else if (isBranch && !this._referenceManager.tryGetName(loc).found) {
       // const adrs = Address.fromInt(loc, this._root.config.memoryMode);
@@ -229,7 +230,7 @@ export class BlockReader {
   public analyzeAndResolve(): ChunkFile[] {
     console.log('analyzeAndResolve started');
     this.initializeOverrides();
-    this.initializeFileReferences();
+    //this.initializeFileReferences();
     this.createChunkFilesFromDatabase();
     this.initializeBlocksAndParts();
     this.analyzeChunkFiles();
@@ -259,6 +260,7 @@ export class BlockReader {
   private initializeBlocksAndParts(): void {
     console.log('initializeBlocksAndParts');
     for (const block of this._enrichedChunks) {
+      //this._referenceManager.fileTable.set(block.location, block.name);
       for (const part of block.parts || []) {
         if(part.structName) {
           this._referenceManager.tryAddStruct(part.location, part.structName);
@@ -267,6 +269,7 @@ export class BlockReader {
           this._referenceManager.tryAddName(part.location, part.label);
         }
       }
+      this._referenceManager.tryAddName(block.location, block.name);
     }
   }
 

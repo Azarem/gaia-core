@@ -22,12 +22,9 @@ export class DbBlock {
     this.group = data.group ?? undefined;
     this.scene = data.scene ?? undefined;
     this.parts = (data.parts ?? []).sort((a, b) => {
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-      return a.start - b.start;
+      const orderA = a.order ?? a.start ?? 0;
+      const orderB = b.order ?? b.start ?? 0;
+      return orderA - orderB;
     });
     this.transforms = data.transforms ?? [];
     this.postProcess = data.postProcess ?? undefined;

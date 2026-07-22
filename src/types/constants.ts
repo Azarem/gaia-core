@@ -102,7 +102,7 @@ export class RomProcessingConstants {
  * BlockReader specific constants
  */
 export class BlockReaderConstants {
-  public static readonly REF_SEARCH_MAX_RANGE = 0x1A0;
+  public static readonly REF_SEARCH_MAX_RANGE = 0x380;
   public static readonly BANK_MASK_CHECK = 0x40;
   public static readonly BYTE_DELIMITER_THRESHOLD = 0x100;
   public static readonly BANK_HIGH_MEMORY_1 = 0x7E;

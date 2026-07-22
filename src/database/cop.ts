@@ -9,6 +9,7 @@ export class CopDef {
   public size: number;
   public parts: string[];
   public halt: boolean;
+  public conditions?: CopCondition[];
 
   constructor(data: Partial<CopDef>) {
     if(!data.name) throw new Error('Name is required');
@@ -19,5 +20,13 @@ export class CopDef {
     this.parts = data.parts ?? [];
     this.halt = data.halt ?? false;
     this.size = data.size ?? 0;
+    this.conditions = data.conditions ?? [];
   }
+}
+
+export interface CopCondition {
+  offset: number;
+  value: number;
+  size: number;
+  parts: string[];
 }

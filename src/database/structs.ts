@@ -8,6 +8,8 @@ export class DbStruct {
   public parent?: string;
   public delimiter?: number;
   public discriminator?: number;
+  public discriminatorLogic?: string;
+  public null?: number;
 
   constructor(data: Partial<DbStruct>) {
     this.name = data.name ?? '';
@@ -15,7 +17,9 @@ export class DbStruct {
     this.parent = data.parent ?? undefined;
     this.delimiter = data.delimiter ?? undefined;
     this.discriminator = data.discriminator ?? undefined;
-
+    this.discriminatorLogic = data.discriminatorLogic ?? (this.discriminator !== undefined ? "=" : undefined);
+    this.null = data.null ?? undefined;
+    
     if(!this.name) throw new Error('Name is required');
   }
 } 

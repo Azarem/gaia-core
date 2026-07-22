@@ -101,7 +101,14 @@ export class TypeParser {
 
     const delimiter = parentType.delimiter;
     const discOffset = parentType.discriminator;
+    const discLogic = parentType.discriminatorLogic;
+    const nullValue = parentType.null;
     const objects: unknown[] = [];
+
+    if(delimiter === undefined && this._blockReader.delimiterReached(nullValue)) {
+      objects.push({ name: parentType.name, parts: [ "null" ]})
+      return objects;
+    }
 
     // Continue to iterate until end or delimiter is reached
     let delReached: boolean;
@@ -109,46 +116,53 @@ export class TypeParser {
       const startPosition = this._romDataReader.position;
       let targetType = parentType;
 
-      // If a discriminator offset is present, use it to identify the type
-      if (discOffset !== undefined) {
-        // Get discriminator position in ROM
-        const discPosition = this._romDataReader.position + discOffset;
+      if(this._blockReader.delimiterReached(nullValue)) {
+        objects.push({ name: parentType.name, parts: [ "null" ]})
+      } else {        
+        // If a discriminator offset is present, use it to identify the type
+        if (discOffset !== undefined) {
+          // Get discriminator position in ROM
+          const discPosition = this._romDataReader.position + discOffset;
 
-        // Get discriminator value
-        const desc = this._romDataReader.romData[discPosition];
+          // Get discriminator value
+          const desc = this._romDataReader.romData[discPosition];
 
-        // Advance position (hide value) if discriminator is first
-        if (discOffset === 0) {
-          this._romDataReader.position++;
+          // Match discriminator to type
+          const matchedStruct = Object.values(this._blockReader._root.structs).find(
+            x => x.parent === fixedTypeName &&
+                (discLogic === '&' ? (((x.discriminator ?? 0) & desc) !== 0) : x.discriminator === desc)
+          );
+          targetType = matchedStruct || parentType; // Default to parent if no match is found
+          
+          // Advance position (hide value) if discriminator is first
+          if (discOffset === 0 && parentType != targetType && discLogic === '=') {
+            this._romDataReader.position++;
+          }
         }
 
-        // Match discriminator to type
-        const matchedStruct = Object.values(this._blockReader._root.structs).find(
-          x => x.parent === fixedTypeName && x.discriminator === desc
-        );
-        targetType = matchedStruct || parentType; // Default to parent if no match is found
+        const types = targetType.types;
+        if (types && types.length > 0) {
+          const memberCount = types.length;
+          const prevPosition = this._romDataReader.position;
+          const parts = new Array(memberCount); // Create new member collection
+          const def: StructDef = { name: targetType.name, parts };
+
+          // Parse each member of the struct
+          for (let i = 0; i < memberCount; i++) {
+            parts[i] = this.parseType(types[i], reg, depth + 1, bank);
+          }
+
+          // Advance (hide) discriminator if it is the last member
+          if (discOffset !== undefined && discOffset === this._romDataReader.position - prevPosition) {
+            this._romDataReader.position++;
+          }
+
+          objects.push(def);
+        } else {
+          this._romDataReader.position ++;
+        }
       }
-
-      const types = targetType.types;
-      if (types && types.length > 0) {
-        const memberCount = types.length;
-        const prevPosition = this._romDataReader.position;
-        const parts = new Array(memberCount); // Create new member collection
-        const def: StructDef = { name: targetType.name, parts };
-
-        // Parse each member of the struct
-        for (let i = 0; i < memberCount; i++) {
-          parts[i] = this.parseType(types[i], reg, depth + 1, bank);
-        }
-
-        // Advance (hide) discriminator if it is the last member
-        if (discOffset !== undefined && discOffset === this._romDataReader.position - prevPosition) {
-          this._romDataReader.position++;
-        }
-
-        objects.push(def);
-      }
-
+      
       // Roll back work if struct overflows a chunk boundary
       // SHOULD only happen for the inventory sprite map
       let checkPosition = startPosition;
@@ -161,9 +175,8 @@ export class TypeParser {
       }
 
       // Stop if the reader should not continue
-      if (!this._blockReader.partCanContinue()) {
-        break;
-      }
+      if (!this._blockReader.partCanContinue()) break;
+      if (nullValue !== undefined) break;
     }
 
     // If we have reached delimiter and at depth 0, note the struct

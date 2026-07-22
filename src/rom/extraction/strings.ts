@@ -89,6 +89,7 @@ export class StringReader {
     const builder: string[] = [];
     const strLoc = this._romDataReader.position;
     const terminator = stringType.terminator;
+    const modifiers = stringType.modifiers;
     let currentLayer = stringType.layers[0];
 
     do {
@@ -102,8 +103,15 @@ export class StringReader {
         break;
       }
 
-      const cmd = commands[c];
-      if (cmd) {
+      let cmd: DbStringCommand | undefined = undefined;
+
+      const mod = modifiers ? modifiers[c] : undefined;
+      if(mod) {
+        const prev = builder[builder.length - 1];
+        const next = mod[prev]
+        if(next) builder[builder.length - 1] = next;
+        else builder.push(currentLayer.map[c - (currentLayer.base ?? 0)]);
+      } else if ((cmd = commands[c])) {
         this.resolveCommand(cmd, builder);
         if (cmd.halt) {
           break;
@@ -111,18 +119,28 @@ export class StringReader {
       } else {
         let found = false;
 
-        for(const layer of stringType.layers) {
-          if(layer.on !== undefined) {
-            if(c === layer.on) {
-              currentLayer = layer;
-              builder.push("[--]");
+        for(const dictionary of Object.values(dictionaries)) {
+          if(dictionary.base !== undefined && c >= dictionary.base && c <= dictionary.base + dictionary.entries.length) {
+            builder.push(dictionary.entries[c - dictionary.base]);
+            found = true;
+            break;
+          }
+        }
+
+        if(!found) {
+          for(const layer of stringType.layers) {
+            if(layer.on !== undefined) {
+              if(c === layer.on) {
+                currentLayer = layer;
+                builder.push("[--]");
+                found = true;
+                break;
+              }
+            } else if(layer.base && c >= layer.base && c < layer.base + layer.map.length){
+              builder.push(layer.map[c - layer.base]);
               found = true;
               break;
             }
-          } else if(layer.base && c >= layer.base && c < layer.base + layer.map.length){
-            builder.push(layer.map[c - layer.base]);
-            found = true;
-            break;
           }
         }
         

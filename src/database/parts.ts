@@ -23,6 +23,5 @@ export class DbPart {
     this.type = data.type;
     this.bank = data.bank ?? undefined;
     this.order = data.order ?? undefined;
-
   }
 }

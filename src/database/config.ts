@@ -18,9 +18,9 @@ export interface DbConfig {
   uncompress: boolean;
   //asmFormats: Record<AddressingMode, string>;
   entryPoints: DbEntryPoint[];
-  paths: Record<BinType, DbPath>;
   memoryMode: MemoryMapMode;
   cpuMode: CpuMode;
   chipset: number;
   ramSize: number;
+  defaultBank?: number;
 } 

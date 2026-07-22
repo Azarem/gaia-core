@@ -322,7 +322,7 @@ export class BlockWriter {
 
       case ObjectType.Address:
         objLines = isArray 
-          ? [`$#${(obj as Address).offset.toString(16).toUpperCase().padStart(4, '0')}`] 
+          ? [`$#${(obj as Address).toString()}`] 
           : [`$${(obj as Address).toString()}`];
         break;
 
@@ -408,9 +408,7 @@ export class BlockWriter {
     
     let first = true;
     for (const op of opList) {
-      if (first) {
-        first = false;
-      } else {
+      if (!first || depth > 0) {
         // Check for labels on subsequent instructions
         const labelResult = this._referenceManager.tryGetName(op.location);
         if (labelResult.found) {
@@ -418,6 +416,8 @@ export class BlockWriter {
           lines.push(`  ${labelResult.referenceName}:`);
         }
       }
+
+      first = false;
 
       let opLine = `    ${op.mnem} `;
 

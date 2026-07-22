@@ -38,7 +38,7 @@ export interface DbStringLayer {
 }
 
 export class DbStringDictionary {
-  //public base?: number;
+  public base?: number;
   //public range: number;
   public command?: number;
   public commandName?: string;
@@ -47,11 +47,11 @@ export class DbStringDictionary {
   public entries: string[];
 
   constructor(data: Partial<DbStringDictionary>) {
-    if(typeof data.command !== 'number') throw new Error('Command is required');
+    if(typeof data.command !== 'number' && typeof data.base !== 'number') throw new Error('Command or base is required');
     if(!data.name) throw new Error('Name is required');
     if(!data.entries || data.entries.length === 0) throw new Error('Entries is required');
 
-    //this.base = data.base ?? undefined;
+    this.base = data.base ?? undefined;
     //this.range = data.range ?? 0;
     this.command = data.command ?? undefined;
     this.commandName = data.commandName ?? undefined;
@@ -77,6 +77,7 @@ export class DbStringType {
   public greedyTerminator: boolean;
   public dictionaries: Record<string, DbStringDictionary>;
   public dictionaryLookup: { text: string, id: number }[];
+  public modifiers?: Record<number, Record<string, string>>;
 
   constructor(data: Partial<DbStringType>) {
     if(!data.name) throw new Error('Name is required');
@@ -99,5 +100,6 @@ export class DbStringType {
       .flatMap((y) => y.entries.map((z, ix) => ({ text: z, id: ((y.command ?? 0) << 8) | ix })))
       //.map((y, z) => ({ text: y.entries[z], id: (y.command << 8) | (y.base + z) }))
       .sort((a, b) => b.text.length - a.text.length);
+    this.modifiers = data.modifiers;
   }
 }
