@@ -12,7 +12,8 @@ import {
   MemberType,
   StructDef,
   Byte,
-  Word,
+  Word, 
+  CpuMode,
 } from '../../types';
 import type { DbStringType } from '../../database';
 import type { BlockReader } from './blocks';
@@ -36,39 +37,61 @@ export class TypeParser {
     this._stringTypes = blockReader._root.stringTypes;
   }
 
-  public parseType(typeName: string, reg: Registers | null, depth: number, bank?: number): unknown {
+  public parseType(typeName: string, reg: Registers | null, depth: number, bank?: number, single?: boolean): unknown {
     
+    const objects: unknown[] = [];
+    const arrayIx = typeName.indexOf('[');
+    const arrayCount = arrayIx !== -1 ? parseInt(typeName.substring(arrayIx + 1, typeName.length - 1), 16) : 0;
+    const arrayTypeName = arrayIx !== -1 ? typeName.substring(0, arrayIx) : typeName;
+    
+    if(arrayCount > 0) {
+      for(let i = 0; i < arrayCount; i++) {
+        objects.push(this.parseType(arrayTypeName, reg, depth + 1, bank, true));
+      }
+      return objects;
+    }
+    
+    const isSoft = arrayTypeName[0] === '~';
+    const realTypeName = isSoft ? arrayTypeName.substring(1) : arrayTypeName;
+    
+    const fixedIx = realTypeName.indexOf('(');
+    const fixedSize = fixedIx !== -1 ? parseInt(realTypeName.substring(fixedIx + 1, realTypeName.length - 1), 16) : 0;
+    const fixedTypeName = fixedIx !== -1 ? realTypeName.substring(0, fixedIx) : realTypeName;
+
+    const stringType = this._stringTypes[fixedTypeName];
+    
+    if (stringType) return this._stringReader.parseString(stringType, fixedSize);
 
     // Shortcut for symbolic Offsets
-    if (typeName[0] === '&') {
-      return this.parseLocation(this._romDataReader.readUShort(), bank, typeName.substring(1), AddressType.Offset);
+    if (fixedTypeName[0] === '&') {
+      return this.parseLocation(this._romDataReader.readUShort(), bank, fixedTypeName.substring(1), AddressType.Offset, isSoft);
     }
 
     // Shortcut for symbolic Addresses
-    if (typeName[0] === '@') {
-      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), typeName.substring(1), AddressType.Address);
+    if (fixedTypeName[0] === '@') {
+      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.Address, isSoft);
     }
     
     // Shortcut for symbolic Locations
-    if (typeName[0] === '%') {
-      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), typeName.substring(1), AddressType.Location);
+    if (fixedTypeName[0] === '%') {
+      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.Location, isSoft);
     }
     
-    const isFixed = typeName[typeName.length - 1] === ')';
-    let fixedTypeName = typeName;
-    let fixedSize = 0;
-
-    if(isFixed) {
-      const startIx = typeName.indexOf('(');
-      fixedTypeName = typeName.substring(0, startIx);
-      fixedSize = parseInt(typeName.substring(startIx + 1, typeName.length - 1), 10);
+    // Shortcut for symbolic OddLocations
+    if (fixedTypeName[0] === '!') {
+      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.OddLocation, isSoft);
     }
+    
+    // const isFixed = realTypeName[realTypeName.length - 1] === ')';
+    // let fixedTypeName = realTypeName;
+    // let fixedSize = 0;
 
-    // Check string types
-    const stringType = this._stringTypes[fixedTypeName];
-    if (stringType) {
-      return this._stringReader.parseString(stringType, fixedSize);
-    }
+    // if(isFixed) {
+    //   const startIx = realTypeName.indexOf('(');
+    //   fixedTypeName = realTypeName.substring(0, startIx);
+    //   fixedSize = parseInt(realTypeName.substring(startIx + 1, realTypeName.length - 1), 10);
+    // }
+
 
     // Parse raw values
     const mType = this.tryParseMemberType(fixedTypeName);
@@ -79,11 +102,11 @@ export class TypeParser {
         case MemberType.Word:
           return new Word(this.parseWordSafe());
         case MemberType.Offset:
-          return this.parseLocation(this._romDataReader.readUShort(), bank, null, AddressType.Offset);
+          return this.parseLocation(this._romDataReader.readUShort(), bank, null, AddressType.Offset, isSoft);
         case MemberType.Address:
-          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Address);
+          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Address, isSoft);
         case MemberType.Location:
-          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Location);
+          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Location, isSoft);
         case MemberType.Binary:
           return this.parseBinary(fixedSize);
         case MemberType.Code:
@@ -102,8 +125,8 @@ export class TypeParser {
     const delimiter = parentType.delimiter;
     const discOffset = parentType.discriminator;
     const discLogic = parentType.discriminatorLogic;
+    const discSize = parentType.discriminatorSize ?? 1;
     const nullValue = parentType.null;
-    const objects: unknown[] = [];
 
     if(delimiter === undefined && this._blockReader.delimiterReached(nullValue)) {
       objects.push({ name: parentType.name, parts: [ "null" ]})
@@ -125,23 +148,27 @@ export class TypeParser {
           const discPosition = this._romDataReader.position + discOffset;
 
           // Get discriminator value
-          const desc = this._romDataReader.romData[discPosition];
+          const disc = this._romDataReader.romData[discPosition];
+          const disc16 = this._romDataReader.romData[discPosition + 1] << 8 | disc;
 
           // Match discriminator to type
           const matchedStruct = Object.values(this._blockReader._root.structs).find(
             x => x.parent === fixedTypeName &&
-                (discLogic === '&' ? (((x.discriminator ?? 0) & desc) !== 0) : x.discriminator === desc)
+                (discLogic === '&' 
+                  ? (((x.discriminator ?? 0) & disc) !== 0) 
+                  : ((x.discriminator?? 0) >= 256 ? x.discriminator === disc16 : x.discriminator === disc))
           );
           targetType = matchedStruct || parentType; // Default to parent if no match is found
           
           // Advance position (hide value) if discriminator is first
           if (discOffset === 0 && parentType != targetType && discLogic === '=') {
             this._romDataReader.position++;
+            if(discSize > 1 ||(matchedStruct?.discriminator ?? 0) >= 256) this._romDataReader.position++;
           }
         }
 
         const types = targetType.types;
-        if (types && types.length > 0) {
+        if (types) {
           const memberCount = types.length;
           const prevPosition = this._romDataReader.position;
           const parts = new Array(memberCount); // Create new member collection
@@ -153,8 +180,11 @@ export class TypeParser {
           }
 
           // Advance (hide) discriminator if it is the last member
-          if (discOffset !== undefined && discOffset === this._romDataReader.position - prevPosition) {
+          if (discOffset !== undefined 
+            && discOffset === this._romDataReader.position - prevPosition
+            && types?.length > 0) {
             this._romDataReader.position++;
+            if(discSize > 1) this._romDataReader.position++;
           }
 
           objects.push(def);
@@ -168,7 +198,7 @@ export class TypeParser {
       let checkPosition = startPosition;
       while (++checkPosition < this._romDataReader.position) {
         const struct = this._referenceManager.tryGetStruct(checkPosition)
-        if (struct.found && struct.chunkType !== 'Code' && struct.chunkType !== 'Branch') {
+        if (struct.found && struct.chunkType !== "Code" && struct.chunkType !== "Branch") {
           this._romDataReader.position = checkPosition;
           break;
         }
@@ -177,6 +207,7 @@ export class TypeParser {
       // Stop if the reader should not continue
       if (!this._blockReader.partCanContinue()) break;
       if (nullValue !== undefined) break;
+      if(single) break;
     }
 
     // If we have reached delimiter and at depth 0, note the struct
@@ -184,7 +215,8 @@ export class TypeParser {
       this._referenceManager.tryAddStruct(this._romDataReader.position, typeName);
     }
 
-    return objects;
+    if(single) return objects[0];
+    else return objects;
   }
 
   private tryParseMemberType(memberTypeName: string): MemberType | null {
@@ -228,20 +260,44 @@ export class TypeParser {
     return outBuffer;
   }
 
-  private parseLocation(offset: number, bank: number | undefined, typeName: string | null, addrType: AddressType): unknown {
+  private parseLocation(offset: number, bank: number | undefined, typeName: string | null, addrType: AddressType, isSoft: boolean = false): unknown {
     // If bank is not provided and offset is 0, it should resolve to #$0000
-    if ((bank === undefined || bank === null) && offset === 0) {
+    if ((bank === undefined || bank === null) && (offset === 0 || offset === 0xFFFF)) {
       return new Word(offset);
     }
 
-    offset -= this._romDataReader.offset;
+    const hasOffset = this._romDataReader.offset !== undefined;
+
+    if(hasOffset) offset -= this._romDataReader.offset!;
 
     let adrs: Address;
     let loc: number;
-    if(addrType === AddressType.Location || this._romDataReader.offset) {
+    if(addrType === AddressType.Location || hasOffset) {
       loc = offset | (bank! << 16);
+      if(hasOffset && !this._blockReader._currentChunk!.isFile) loc += this._blockReader._currentChunk!.location;
       //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
     } else {
+      if(addrType === AddressType.OddLocation) {
+        const bankFlag = this._blockReader._root.config.cpuMode === CpuMode.Fast ? 0x80 : 0;
+        const bankReal = this._romDataReader.position >> 16;
+        const isVeryOdd = !this._blockReader._root.config.oddLocationBase || bankReal < this._blockReader._root.config.oddLocationBase;
+        const bankBase = ((isVeryOdd ? 0x40 : 0) + bankReal) | bankFlag;
+        const bankMax = (this._romDataReader.romData.length >> 16) | bankFlag;
+        const bankSpan = isVeryOdd ? 0 : ((0x40 | bankFlag) - bankMax);
+
+        const hiOffset = (offset >> 8) & 0x7F;
+        const hiAdjust = ((hiOffset ^ ((offset >> 8) | (bank! << 8))) << 1) | 0x80 | hiOffset;
+
+        const hiBank = (hiAdjust >> 8) + bankBase;
+
+        offset = ((hiAdjust & 0xFF) << 8) | (offset & 0xFF);
+        bank = hiBank;
+
+        if(hiBank >= bankMax) {
+          bank += bankSpan;
+          offset &= 0x7FFF;
+        }
+      }
       // Bank cannot be null, instead use bank from current position
       const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
   
@@ -261,19 +317,20 @@ export class TypeParser {
       //this._blockReader._currentChunk &&
       //ChunkFileUtils.isInside(this._blockReader._currentChunk, loc) &&
       typeName && 
-      (this._romDataReader.offset || !this._blockReader._root.rewrites[loc])
+      (hasOffset || !this._blockReader._root.rewrites[loc])
     ) {
       // Normalize the type name to default to current part definition
       //const resolvedTypeName = typeName ?? this._blockReader._currentAsmBlock!.structName ?? 'Binary';
 
       // Add the struct type to our chunk table if it is not already present
-      const oldStruct = this._referenceManager.structTable.get(loc);
-      if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, typeName);
+      this._referenceManager.tryAddStruct(loc, isSoft ? "~" + typeName : typeName);
+      //if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, typeName);
 
+      //const resolvedTypeName = typeName[0] === '~' ? typeName.substring(1) : typeName;
       // If the location is not already in the reference table, add it
       //const referenceName = `${resolvedTypeName.toLowerCase()}_${adrs.toString()}`;
       const referenceName = `${typeName.toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
-      this._referenceManager.tryAddName(loc, referenceName);
+      this._referenceManager.tryAddName(loc, isSoft ? "~" + referenceName : referenceName);
     }
 
     return new LocationWrapper(loc, addrType);
@@ -289,8 +346,8 @@ export class TypeParser {
       if (first) {
         first = false;
       } else {
-        const struct = this._referenceManager.structTable.get(this._romDataReader.position);
-        if (struct && struct !== 'Branch') break;
+        const struct = this._referenceManager.tryGetStruct(this._romDataReader.position);
+        if (struct.found && struct.chunkType !== "Branch") break;
       }
 
       // Process register adjustments before parse

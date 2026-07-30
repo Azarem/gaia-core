@@ -31,6 +31,7 @@ export class ChunkFile {
   scene?: string;
   base?: number;
   referenceManager?: ReferenceManager;
+  isFile: boolean;
 
   constructor(type: DbFileType, name: string, size: number = 0, location: number = 0) {
     this.type = type;
@@ -39,6 +40,7 @@ export class ChunkFile {
     this.location = location;
     this.mnemonics = {};
     this.compressed = type.compressed;
+    this.isFile = !type.isBlock;
   }
   
   public enrichWithRawDataFromDbFile(file: DbFile, rom: Uint8Array, compression: ICompressionProvider | undefined): void {
@@ -48,7 +50,8 @@ export class ChunkFile {
     this.base = file.base ?? this.type.base ?? this.base;
     this.group = file.group ?? this.group;
     this.scene = file.scene ?? this.scene;
-    this.compressed = file.compressed;// ?? this.type.compressed ?? this.compressed;
+    this.compressed = file.compressed ?? this.type.compressed ?? this.compressed;
+    this.isFile = true;
 
     let start = this.location;
     let header: Uint8Array | null = null;
@@ -80,6 +83,8 @@ export class ChunkFile {
     //chunkFile.id = block.id;
     this.group = block.group;
     this.scene = block.scene;
+    this.base = block.base;
+    this.isFile = false;
     
     // Enrich with AsmBlock parts
     this.parts = [];

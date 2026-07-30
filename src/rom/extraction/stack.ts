@@ -75,7 +75,7 @@ export class StackOperations {
 
       case 'RTL':
       case 'RTS':
-        this._blockReader._referenceManager.tryAddStruct(this._blockReader._romDataReader.position, 'Code');
+        this._blockReader._referenceManager.tryAddStruct(this._blockReader._romDataReader.position, '~Code');
         break;
     }
   }

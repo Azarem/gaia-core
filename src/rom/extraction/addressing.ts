@@ -201,7 +201,7 @@ export class AddressingModeHandler {
       : nextAddress + this._dataReader.readSByte();
 
     //this._blockReader.noteType(relative, 'Code', false, reg);
-    this._blockReader._referenceManager.tryAddStruct(relative, 'Branch');
+    this._blockReader._referenceManager.tryAddStruct(relative, "~Branch");
     this._blockReader.updateRegisterState(relative, reg);
     operands.push(new LocationWrapper(relative, isLong ? AddressType.WRelative : AddressType.Relative));
   }
@@ -259,7 +259,7 @@ export class AddressingModeHandler {
       if (isJump) {
         const type = isIndexedIndirect ? '&Code' : 'Code';
         const name = this._blockReader.noteType(wrapper.location, type, isPush, registers);
-        if(mnemonic === 'JMP') this._blockReader._referenceManager.tryAddStruct(this._dataReader.position, 'Code');
+        if(mnemonic === 'JMP') this._blockReader._referenceManager.tryAddStruct(this._dataReader.position, '~Code');
 
         if (isPush) {
           operands.push(`&${name}-1`);

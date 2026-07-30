@@ -327,7 +327,7 @@ export class RomWriter {
         }
         
         // Parse assembly parts
-        RomWriter.parseAssembly(this.root, file.parts, fileLookup, file.includeLookup!, this.outBuffer!, undefined);
+        RomWriter.parseAssembly(this.root, file.parts, fileLookup, file.includeLookup!, this.outBuffer!, file.base);
       }
     }
 
@@ -351,6 +351,7 @@ export class RomWriter {
     }
 
     let bix = 0;
+    const rootLoc = blocks[0].location;
 
     for (const block of blocks) {
       let position = block.location; // Always start at block's absolute location
@@ -496,6 +497,7 @@ export class RomWriter {
 
             if(addrOffset !== undefined) {
               loc += addrOffset;
+              if(fileLookup?.size) loc -= rootLoc;
             }
             else if(!isRelative && type !== AddressType.Location) {
               const address = Address.fromLocation(loc, root.config.memoryMode, root.config.cpuMode);

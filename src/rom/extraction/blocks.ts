@@ -162,15 +162,16 @@ export class BlockReader {
    * Notes a type at a location and manages chunk references
    */
   public noteType(loc: number, type: string, silent: boolean = false, reg?: Registers): string {
-    const oldStruct = this._referenceManager.structTable.get(loc);
-    if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, type);
+    const isSoft = type[0] === '~';
+    this._referenceManager.tryAddStruct(loc, type);
+    //if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, type);
 
     const nameResult = this._referenceManager.tryGetName(loc);
     let name: string;
     
     if (!nameResult.found) {
       name = this._referenceManager.createTypeName(type, loc);
-      this._referenceManager.tryAddName(loc, name);
+      this._referenceManager.tryAddName(loc, isSoft ? "~" + name : name);
     } else {
       name = nameResult.referenceName!;
     }
@@ -313,9 +314,7 @@ export class BlockReader {
    */
   private processContinuousEntry(current: string, reg: Registers, bank: number | undefined, last: TableEntry): void {
     const obj = this._typeParser.parseType(current, reg, 0, bank);
-    if (!Array.isArray(last.object)) {
-      last.object = [last.object];
-    }
+    if (!Array.isArray(last.object)) last.object = [last.object];
     (last.object as unknown[]).push(obj);
   }
 
@@ -324,9 +323,10 @@ export class BlockReader {
    */
   private processNewEntry(current: string, reg: Registers, bank: number | undefined, last: TableEntry): void {
     let res = this._typeParser.parseType(current, reg, 0, bank);
-    if (BlockReaderConstants.POINTER_CHARACTERS.includes(current[0]) && !Array.isArray(res)) {
-      res = [res];
-    }
+    if (current.indexOf("[") !== -1 || (
+      BlockReaderConstants.POINTER_CHARACTERS.includes(current[0]) 
+      && !Array.isArray(res))
+     ) res = [res];
     last.object = res;
   }
 
@@ -430,6 +430,7 @@ export class BlockReader {
       if(!chunkFile.type.isBlock) continue;
       chunkFile.referenceManager = this._referenceManager;
       this._currentChunk = chunkFile;
+      this._romDataReader.offset = chunkFile.base;
       for (const asmBlock of chunkFile.parts || []) {
         this._currentAsmBlock = asmBlock;
         this.processPart(asmBlock);
@@ -448,7 +449,7 @@ export class BlockReader {
       chunkFile.parts = [asmBlock];
       this._currentAsmBlock = asmBlock;
       this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);
-      this._romDataReader = new RomDataReader(chunkFile.rawData!, chunkFile.base ?? 0);
+      this._romDataReader = new RomDataReader(chunkFile.rawData!, chunkFile.base);
       this._typeParser = new TypeParser(this);
       this.processPart(asmBlock);
     }

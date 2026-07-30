@@ -50,7 +50,7 @@ export class RomProcessor {
         }
         file.rawData = undefined;
         file.rawData = new Uint8Array(ChunkFileUtils.calculateSize(file));
-        RomWriter.parseAssembly(this.writer.root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.type.base ?? 0);
+        RomWriter.parseAssembly(this.writer.root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.type.base);
       }
     }
 

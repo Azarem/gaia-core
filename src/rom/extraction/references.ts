@@ -23,15 +23,27 @@ export class ReferenceManager {
   }
 
   // Struct management
-  public tryGetStruct(location: number): { found: boolean; chunkType?: string } {
-    const chunkType = this.structTable.get(location);
-    return { found: chunkType !== undefined, chunkType };
+  public tryGetStruct(location: number): { found: boolean; chunkType?: string, isSoft?: boolean } {
+    let chunkType = this.structTable.get(location);
+    const found = chunkType !== undefined;
+    let isSoft : boolean | undefined;
+    if(chunkType) {
+      if(chunkType[0] === '~') {
+        isSoft = true;
+        chunkType = chunkType.substring(1);
+      }
+      else isSoft = false;
+    }
+    return { found, chunkType, isSoft };
   }
 
   public tryAddStruct(location: number, chunkType: string): boolean {
-    if (this.structTable.has(location)) {
+    const existingStruct = this.tryGetStruct(location);
+    const isSoft = chunkType[0] === '~';
+    if (existingStruct.isSoft === false || (existingStruct.found && isSoft)) {
       return false;
     }
+
     this.structTable.set(location, chunkType);
     return true;
   }
@@ -41,13 +53,24 @@ export class ReferenceManager {
   }
 
   // Name management
-  public tryGetName(location: number): { found: boolean; referenceName?: string } {
-    const referenceName = this.nameTable.get(location);
-    return { found: referenceName !== undefined, referenceName };
+  public tryGetName(location: number): { found: boolean; referenceName?: string; isSoft?: boolean } {
+    let referenceName = this.nameTable.get(location);
+    const found = referenceName !== undefined;
+    let isSoft : boolean | undefined;
+    if(referenceName) {
+      if(referenceName[0] === '~') {
+        isSoft = true;
+        referenceName = referenceName.substring(1);
+      }
+      else isSoft = false;
+    }
+    return { found, referenceName, isSoft };
   }
 
   public tryAddName(location: number, referenceName: string): boolean {
-    if (this.nameTable.has(location)) {
+    const existingName = this.tryGetName(location);
+    const isSoft = referenceName[0] === '~';
+    if (existingName.isSoft === false || (existingName.found && isSoft)) {
       return false;
     }
     this.nameTable.set(location, referenceName);
@@ -75,8 +98,10 @@ export class ReferenceManager {
 
   public createTypeName(type: string, location: number): string {
     let name = type.toLowerCase();
+    const isSoft = type[0] === '~';
+    if(isSoft) name = name.substring(1);
 
-    if (name === 'branch') name = 'loc';
+    if (name === "branch") name = 'loc';
     
     // Handle pointer characters
     while (name.length > 0 && BlockReaderConstants.POINTER_CHARACTERS.includes(name[0])) {
@@ -117,8 +142,8 @@ export class ReferenceManager {
 
   public resolveName(location: number, type: AddressType, isBranch: boolean): string {
     const prefix = Address.codeFromType(type);
-    let name: string | null = null;
-    let label: string | null = null;
+    let name: string | undefined;
+    let label: string | undefined;
     let resolvedLocation = location;
 
     // Handle rewrites first
@@ -132,7 +157,7 @@ export class ReferenceManager {
     //name = ChunkFileUtils.isOutside(block, resolvedLocation) && this.fileTable.get(resolvedLocation) || null;
     
     // Try to get existing reference
-    name = this.nameTable.get(resolvedLocation) || null;
+    name = this.tryGetName(resolvedLocation).referenceName;
 
     if (!name) {
       name = isBranch ? 
@@ -170,15 +195,15 @@ export class ReferenceManager {
     return this.processClosestMatch(location, closestName, closestLocation, closestDistance);
   }
 
-  private processRewrite(location: number, rewrite: number): { location: number; label: string | null } {
+  private processRewrite(location: number, rewrite: number): { location: number; label?: string } {
     const offset = location - rewrite;
     const cmd = offset < 0 ? '-' : '+';
     const absOffset = Math.abs(offset);
 
-    let label: string | null = null;
-    const structType = this.structTable.get(rewrite);
+    let label: string | undefined;
+    const structType = this.tryGetStruct(rewrite);
     
-    if (structType === BlockReaderConstants.WIDE_STRING_TYPE) {
+    if (structType.chunkType === BlockReaderConstants.WIDE_STRING_TYPE) {
       this.markerTable.set(rewrite, absOffset);
       this.markerTable.set(location, absOffset);
       label = cmd === '-' ? BlockReaderConstants.NEGATIVE_MARKER_FORMAT : BlockReaderConstants.MARKER_FORMAT;
@@ -201,9 +226,9 @@ export class ReferenceManager {
     }
 
     let result = closestName;
-    const structType = this.structTable.get(closestLocation);
+    const structType = this.tryGetStruct(closestLocation);
 
-    if (structType === BlockReaderConstants.WIDE_STRING_TYPE) {
+    if (structType.chunkType === BlockReaderConstants.WIDE_STRING_TYPE) {
       this.markerTable.set(closestLocation, closestDistance);
       this.markerTable.set(location, closestDistance);
       result += BlockReaderConstants.MARKER_FORMAT;

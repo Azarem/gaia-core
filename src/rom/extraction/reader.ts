@@ -5,9 +5,9 @@
 export class RomDataReader {
   public romData: Uint8Array;
   public position: number;
-  public offset: number;
+  public offset?: number;
 
-  constructor(romData: Uint8Array, offset: number = 0) {
+  constructor(romData: Uint8Array, offset?: number) {
     if (!romData) {
       throw new Error('romData cannot be null');
     }

@@ -274,7 +274,7 @@ describe('BlockReader', () => {
       for (const f of asmFiles) {
         const includeBlocks = asmFiles
           .filter(x => f.includes?.has(x.name.toUpperCase()))
-          .flatMap(x => x.parts!)
+          .flatMap(x => x.parts ?? [])
           .filter(b => !!b.label);
 
         f.includeLookup = new Map();
@@ -283,7 +283,7 @@ describe('BlockReader', () => {
           if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
         }
 
-        for (const b of f.parts!) {
+        for (const b of f.parts ?? []) {
           if (b.label) {
             masterLookup.set(b.label.toUpperCase(), b.location);
             f.includeLookup.set(b.label.toUpperCase(), b);

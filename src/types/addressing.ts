@@ -13,7 +13,8 @@ export enum AddressType {
   WBank = 'WBank',
   Relative = 'Relative',
   WRelative = 'WRelative',
-  Location = 'Location'
+  Location = 'Location',
+  OddLocation = 'OddLocation'
 }
 
 /**
@@ -157,6 +158,8 @@ export class Address {
         return AddressType.WBank;
       case '%':
         return AddressType.Location;
+      case '!':
+        return AddressType.OddLocation;
       default:
         return AddressType.Unknown;
     }
@@ -174,6 +177,8 @@ export class Address {
         return '*';
       case AddressType.Location:
         return '%';
+      case AddressType.OddLocation:
+        return '!';
       default:
         return null;
     }
