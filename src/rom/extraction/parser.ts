@@ -56,7 +56,7 @@ export class TypeParser {
     
     const fixedIx = realTypeName.indexOf('(');
     const fixedSize = fixedIx !== -1 ? parseInt(realTypeName.substring(fixedIx + 1, realTypeName.length - 1), 16) : 0;
-    const fixedTypeName = fixedIx !== -1 ? realTypeName.substring(0, fixedIx) : realTypeName;
+    let fixedTypeName = fixedIx !== -1 ? realTypeName.substring(0, fixedIx) : realTypeName;
 
     const stringType = this._stringTypes[fixedTypeName];
     
@@ -64,6 +64,11 @@ export class TypeParser {
 
     // Shortcut for symbolic Offsets
     if (fixedTypeName[0] === '&') {
+      const bankIx = fixedTypeName.indexOf('$');
+      if(bankIx !== -1) {
+        bank = parseInt(fixedTypeName.substring(bankIx + 1, fixedTypeName.length), 16);
+        fixedTypeName = fixedTypeName.substring(0, bankIx);
+      }
       return this.parseLocation(this._romDataReader.readUShort(), bank, fixedTypeName.substring(1), AddressType.Offset, isSoft);
     }
 
@@ -274,7 +279,7 @@ export class TypeParser {
     let loc: number;
     if(addrType === AddressType.Location || hasOffset) {
       loc = offset | (bank! << 16);
-      if(hasOffset && !this._blockReader._currentChunk!.isFile) loc += this._blockReader._currentChunk!.location;
+      if(hasOffset && !this._blockReader._currentChunk!.compressed) loc += this._blockReader._currentChunk!.location;
       //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
     } else {
       if(addrType === AddressType.OddLocation) {

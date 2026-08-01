@@ -198,13 +198,16 @@ export class BlockWriter {
     if (this.getObjectType(obj) === ObjectType.Address) {
       const addr = obj as Address;
 
-      if (op.size === 4) {
-        return addr;
-      }
-
       if (addr.isCodeBank && addr.offset < Address.UPPER_BANK) {
         const label = this._root.mnemonics[addr.offset];
-        if (label) return label;
+        if (label) {
+          if(op.size === 4) return addr.bank.toString(16).toUpperCase().padStart(2, '0') + label;
+          return label;
+        }
+      }
+      
+      if (op.size === 4) {
+        return addr;
       }
 
       return addr.offset;

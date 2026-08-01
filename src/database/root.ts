@@ -313,7 +313,7 @@ export class DbRootUtils {
 
       if(group) chunkFile.group = group;
 
-      if(chunkFile.type.isBlock || chunkFile.type.isPatch || chunkFile.type.struct) {
+      if(chunkFile.type.isBlock || chunkFile.type.isPatch || chunkFile.struct) {
         const chunkData = await readFileAsText(entry.path);
         chunkFile.textData = chunkData;
         chunkFile.size = chunkData.length;

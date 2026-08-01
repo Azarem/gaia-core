@@ -291,7 +291,7 @@ export class BlockReader {
     while (this._romDataReader.position < this._partEnd) {
       const structResult = this._referenceManager.tryGetStruct(this._romDataReader.position);
       if (structResult.found) {
-        current = structResult.chunkType!;
+        current = structResult.isSoft ? "~" + structResult.chunkType! : structResult.chunkType!;
       } else if (last !== null && !this._root.stringTypes[current]) {
         this.processContinuousEntry(current, reg, bank, last);
         continue;
@@ -427,11 +427,11 @@ export class BlockReader {
     console.log('analyzeChunkFiles');
     
     for (const chunkFile of this._enrichedChunks) {
-      if(!chunkFile.type.isBlock) continue;
+      if(!chunkFile.parts?.length) continue;
       chunkFile.referenceManager = this._referenceManager;
       this._currentChunk = chunkFile;
       this._romDataReader.offset = chunkFile.base;
-      for (const asmBlock of chunkFile.parts || []) {
+      for (const asmBlock of chunkFile.parts) {
         this._currentAsmBlock = asmBlock;
         this.processPart(asmBlock);
       }
@@ -442,10 +442,10 @@ export class BlockReader {
     const oldTypeParser = this._typeParser;
     
     for (const chunkFile of this._enrichedChunks) {
-      if(!chunkFile.type.struct) continue;
+      if(!chunkFile.struct || !chunkFile.compressed) continue;
       this._currentChunk = chunkFile;
 
-      const asmBlock = new AsmBlock(0, chunkFile.size, false, chunkFile.name, chunkFile.type.struct);
+      const asmBlock = new AsmBlock(0, chunkFile.size, false, chunkFile.name, chunkFile.struct);
       chunkFile.parts = [asmBlock];
       this._currentAsmBlock = asmBlock;
       this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);
@@ -465,9 +465,9 @@ export class BlockReader {
   private resolveReferences(): void {
     console.log('resolveReferences');
     for (const chunkFile of this._enrichedChunks) {
-      if(!chunkFile.type.isBlock) continue;
+      if(!chunkFile.parts?.length) continue;
       this._currentChunk = chunkFile;
-      for (const asmBlock of chunkFile.parts!) {
+      for (const asmBlock of chunkFile.parts) {
         this._currentAsmBlock = asmBlock;
         this.resolveObject(asmBlock.objList, false);
       }

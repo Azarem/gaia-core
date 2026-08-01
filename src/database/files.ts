@@ -11,6 +11,7 @@ export class DbFile {
   public group?: string;
   public scene?: string;
   public base?: number;
+  public struct?: string;
 
   constructor(data: Partial<DbFile>) {
     if(!data.name) throw new Error('Name is required');
@@ -27,6 +28,7 @@ export class DbFile {
     this.group = data.group || undefined;
     this.scene = data.scene || undefined;
     this.base = data.base ?? undefined;
+    this.struct = data.struct ?? undefined;
   }
 } 
 

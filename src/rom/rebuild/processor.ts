@@ -34,8 +34,8 @@ export class RomProcessor {
       conditionFiles.push(file.name);
 
       if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
-      else if (file.type.isBlock) asmFiles.push(file);
-      else if (!file.type.struct) continue;
+      else if (file.parts?.length) asmFiles.push(file);
+      else if (!file.struct) continue;
       
       const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
       const { blocks, includes, reqBank } = assembler.parseAssembly();
@@ -43,14 +43,14 @@ export class RomProcessor {
       file.includes = includes;
       file.bank = reqBank ?? void 0;
 
-      if(file.type.struct) {
+      if(file.struct) {
         file.includeLookup = new Map<string, AsmBlock>();
         for (const b of file.parts) {
           if(b.label) file.includeLookup.set(b.label.toUpperCase(), b);
         }
         file.rawData = undefined;
         file.rawData = new Uint8Array(ChunkFileUtils.calculateSize(file));
-        RomWriter.parseAssembly(this.writer.root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.type.base);
+        RomWriter.parseAssembly(this.writer.root, file.parts, dummyMap, file.includeLookup!, file.rawData!, file.base);
       }
     }
 

@@ -32,6 +32,7 @@ export class ChunkFile {
   base?: number;
   referenceManager?: ReferenceManager;
   isFile: boolean;
+  struct?: string;
 
   constructor(type: DbFileType, name: string, size: number = 0, location: number = 0) {
     this.type = type;
@@ -41,6 +42,7 @@ export class ChunkFile {
     this.mnemonics = {};
     this.compressed = type.compressed;
     this.isFile = !type.isBlock;
+    this.struct = type.struct ?? undefined;
   }
   
   public enrichWithRawDataFromDbFile(file: DbFile, rom: Uint8Array, compression: ICompressionProvider | undefined): void {
@@ -51,11 +53,18 @@ export class ChunkFile {
     this.group = file.group ?? this.group;
     this.scene = file.scene ?? this.scene;
     this.compressed = file.compressed ?? this.type.compressed ?? this.compressed;
+    this.struct = file.struct ?? this.type.struct ?? this.struct;
     this.isFile = true;
 
     let start = this.location;
     let header: Uint8Array | null = null;
     const fileType = this.type;
+
+    if(this.struct && !this.compressed) {
+      const newPart = new AsmBlock(this.location, this.size, false, this.name, this.struct);
+      this.parts = [newPart];
+      return;
+    }
 
     if(fileType.header) {
       header = new Uint8Array(rom.slice(start, start + fileType.header));
@@ -198,7 +207,7 @@ export class ChunkFileUtils {
 
     // Find chunk this reference belongs to
     for (const otherBlock of root) {
-      if (otherBlock !== block && !otherBlock.type.struct) {
+      if (otherBlock !== block && !otherBlock.struct) {
         const [otherIsInside, otherPart] = this.isInsideWithPart(otherBlock, location);
         if (otherIsInside) {
           return [true, otherBlock, otherPart];

@@ -54,7 +54,7 @@ export class RomGenerator {
     //Initialize chunks
     const reader = new BlockReader(this.sourceData, this.dbRoot);
     const chunkFiles = reader.analyzeAndResolve();
-    const asmFiles = chunkFiles.filter(b => b.type.isBlock);
+    const asmFiles = chunkFiles.filter(b => b.parts?.length);
     const patchFiles: ChunkFile[] = [];
 
     //Convert asm blocks to text

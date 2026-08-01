@@ -186,8 +186,8 @@ describe('BlockReader', () => {
         conditionFiles.push(file.name);
   
         if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
-        else if (file.type.isBlock) asmFiles.push(file);
-        else if (!file.type.struct) continue;
+        else if (file.parts?.length) asmFiles.push(file);
+        else if (!file.struct) continue;
         
         const assembler = new Assembler(reader._root, file.textData!, conditionFiles);
         const { blocks, includes, reqBank } = assembler.parseAssembly();
@@ -195,7 +195,7 @@ describe('BlockReader', () => {
         file.includes = includes;
         file.bank = reqBank ?? void 0;
   
-        if(file.type.struct) {
+        if(file.struct) {
           file.includeLookup = new Map<string, AsmBlock>();
           for (const b of file.parts) {
             if(b.label) file.includeLookup.set(b.label.toUpperCase(), b);
