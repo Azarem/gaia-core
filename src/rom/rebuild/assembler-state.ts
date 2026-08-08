@@ -1,4 +1,4 @@
-import { Byte, RomProcessingConstants, AsmBlock, Op } from '../../types';
+import { Byte, RomProcessingConstants, AsmBlock, Op, Word, Long } from '../../types';
 import { DbRoot, DbStruct, OpCode } from '../../database';
 import type { Assembler } from './assembler';
 import { AsmReader } from '../extraction/asm';
@@ -12,6 +12,8 @@ export class AssemblerState {
   private readonly parentStruct: DbStruct | null;
   private readonly root: DbRoot;
   private readonly discriminator: number | null;
+  private readonly discriminatorLogic: string | null;
+  private readonly discriminatorSize: number | undefined;
   private delimiter: number | null;
   private memberOffset: number;
   private dataOffset: number;
@@ -34,6 +36,8 @@ export class AssemblerState {
         ) || null;
 
     this.discriminator = this.parentStruct?.discriminator ?? null;
+    this.discriminatorLogic = this.parentStruct?.discriminatorLogic ?? "=";
+    this.discriminatorSize = this.parentStruct?.discriminatorSize ?? 1;
     this.delimiter = this.dbStruct?.delimiter ?? null;
     this.memberOffset = 0;
     this.dataOffset = 0;
@@ -46,11 +50,17 @@ export class AssemblerState {
   }
 
   private checkDisc(): void {
-    if (this.discriminator === this.dataOffset) {
-      // Discriminator is always 1 byte
-      this.context.currentBlock!.objList.push(this.dbStruct!.discriminator!);
-      this.context.currentBlock!.size += 1;
-      this.dataOffset += 1;
+    if (this.discriminator === this.dataOffset && this.discriminatorLogic === "=") {
+      const discriminator = this.dbStruct!.discriminator!;
+      if(discriminator > 255 || this.discriminatorSize === 2) {
+        this.context.currentBlock!.objList.push(new Word(discriminator));
+        this.context.currentBlock!.size += 2;
+        this.dataOffset += 2;
+      } else {
+        this.context.currentBlock!.objList.push(new Byte(discriminator));
+        this.context.currentBlock!.size += 1;
+        this.dataOffset += 1;
+      }
     }
   }
 
@@ -154,18 +164,17 @@ export class AssemblerState {
     //this.context.blockIndex++;
 
     // Remove label marker
-    if (labelChar === ':') {
-      this.context.lineBuffer = this.context.lineBuffer.substring(1);
-    } else if (labelChar === '[' || labelChar === '{') {
-      this.context.lineBuffer = operand.substring(1).replace(/^[\s,\t]+/, '');
+    if (labelChar === ':') this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
+    // } else if (labelChar === '[' || labelChar === '{') {
+    //   this.context.lineBuffer = operand.substring(1).replace(/^[\s,\t]+/, '');
 
-      // Process the next 
-      const state = new AssemblerState(this.context, this.currentType);
-      state.processText(labelChar);
+    //   // Process the next 
+    //   const state = new AssemblerState(this.context, this.currentType);
+    //   state.processText(labelChar);
 
-      // Advance to next part
-      this.advancePart();
-    }
+    //   // Advance to next part
+    //   this.advancePart();
+    // }
 
     return true;
   }
@@ -243,6 +252,14 @@ export class AssemblerState {
           return;
         }
 
+        if(lineSymbol === '{') {
+          this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
+          const state = new AssemblerState(this.context, this.currentType);
+          state.processText('{');
+          this.advancePart();
+          continue;
+        }
+
         // Block close
         if (lineSymbol === '}') {
           if (openTag === '{') {
@@ -291,6 +308,18 @@ export class AssemblerState {
       }
 
       if (mnemonic && mnemonic.length > 0) {
+
+        if(mnemonic == 'null' && this.dbStruct?.null !== undefined) {
+          if(this.dbStruct.null > 255) {
+            this.context.currentBlock!.objList.push(new Word(this.dbStruct.null));
+            this.context.currentBlock!.size += 2;
+          } else {
+            this.context.currentBlock!.objList.push(new Byte(this.dbStruct.null));
+            this.context.currentBlock!.size += 1;
+          }
+          continue;
+        }
+
         // Get list of opcodes from mnemonic
         const codes = this.root.opLookup[mnemonic.toUpperCase()];
 
@@ -329,10 +358,42 @@ export class AssemblerState {
             throw new Error(`Unknown COP command ${cmd}`);
           }
 
-          this.context.currentBlock!.objList.push(new Op(opCode, 0, [new Byte(cop.id), ...parts.slice(1)], cop.size + 2));
+          let size = 2;
+          const operands : any[] = [ new Byte(cop.id) ];
+          for(let i = 1; i < parts.length; i++) {
+            let part = parts[i];
 
-          this.context.currentBlock!.size += cop.size + 2;
+            if(part[0] === '#') part = part.substring(1);
+            if(part[0] === '$') part = part.substring(1);
+            
+            if(part.match(/^[a-fA-F0-9]+$/)) {
+              let value = parseInt(part, 16);
+              if(part.length <= 2) {
+                operands.push(new Byte(value));
+                size++;
+              } else if(part.length <= 4) {
+                operands.push(new Word(value));
+                size+=2;
+              } else {
+                operands.push(new Long(value));
+                size+=3;
+              }
+            } else {
+              operands.push(parts[i]);
+              switch(part[0]) {
+                case '^': size++; break;
+                case '*':
+                case '&': size += 2; break;
+                case '%':
+                case '!':
+                case '@': size += 3; break;
+                default: throw new Error(`Unknown COP operand ${part}`);
+              }
+            }
+          }
 
+          this.context.currentBlock!.objList.push(new Op(opCode, 0, operands, size));
+          this.context.currentBlock!.size += size;
           continue;
         }
 

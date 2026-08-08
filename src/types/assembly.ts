@@ -36,7 +36,6 @@ export class AsmBlock {
   public isString: boolean;
   public objList: any[];
   public structName?: string;
-  public bank?: number;
   public includes?: Set<{block: ChunkFile, part: AsmBlock}>;
 
   constructor(
@@ -53,7 +52,6 @@ export class AsmBlock {
     this.isString = isString;
     this.objList = [];
     this.structName = structName;
-    this.bank = bank;
     this.includes = new Set();
   }
 } 

@@ -10,6 +10,7 @@ import {
 } from '../../types';
 import type { CopDef } from '../../database';
 import type { BlockReader } from './blocks';
+import { TransformProcessor } from './transforms';
 
 /**
  * Handles COP (Coprocessor) command processing
@@ -18,16 +19,18 @@ import type { BlockReader } from './blocks';
 export class CopCommandProcessor {
   private readonly _blockReader: BlockReader;
   private readonly _romDataReader: RomDataReader;
+  private readonly _transformProcessor: TransformProcessor;
 
-  constructor(blockReader: BlockReader) {
+  constructor(blockReader: BlockReader, transformProcessor: TransformProcessor) {
     this._blockReader = blockReader;
     this._romDataReader = blockReader._romDataReader;
+    this._transformProcessor = transformProcessor;
   }
 
   /**
    * Parses a COP command based on its definition
    */
-  public parseCopCommand(copDef: CopDef, operands: unknown[]): void {
+  public parseCopCommand(copDef: CopDef, operands: unknown[], reg: Registers): void {
 
     let parts = copDef.parts;
 
@@ -37,7 +40,12 @@ export class CopCommandProcessor {
         if(condition.value >= 256) {
           value |= this._romDataReader.romData[this._romDataReader.position + condition.offset + 1] << 8;
         }
-        if(value === condition.value) {
+        if(condition.logic === '&') {
+          if(value & condition.value) {
+            parts = condition.parts;
+            break;
+          }
+        } else if(value === condition.value) {
           parts = condition.parts;
           break;
         }
@@ -50,7 +58,8 @@ export class CopCommandProcessor {
       //Trim the end for bank hints
       const bankHintIx = partStr.indexOf('$')
       if(bankHintIx > 0) {
-        bank = parseInt(partStr.substring(bankHintIx + 1), 16);
+        if(partStr[bankHintIx + 1] === '$') bank = reg.value['dataBank'] ?? this._blockReader._root.config.defaultBank ?? 0x81;
+        else bank = parseInt(partStr.substring(bankHintIx + 1), 16);
         partStr = partStr.substring(0, bankHintIx);
       }
 
@@ -69,15 +78,23 @@ export class CopCommandProcessor {
       if (memberType === null) {
         throw new Error('Cannot use structs in cop def'); // Only basic types are allowed in COP definitions
       }
+      
+      const xform = this._transformProcessor.getTransform();
+
+      operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank));
+
+      if(xform) {
+        this._transformProcessor.applyTransform(xform, operands.length - 1, operands);
+      }
 
       // If there is a label, ignore reading and use the label instead
-      const label = this._blockReader._root.labels[this._romDataReader.position];
-      if (label) {
-        this._romDataReader.position += this.getMemberTypeSize(memberType);
-        operands.push(label);
-      } else {
-        operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank));
-      }
+      // const label = this._blockReader._root.labels[this._romDataReader.position];
+      // if (label) {
+      //   this._romDataReader.position += this.getMemberTypeSize(memberType);
+      //   operands.push(label);
+      // } else {
+      //   operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank));
+      // }
 
     }
   }

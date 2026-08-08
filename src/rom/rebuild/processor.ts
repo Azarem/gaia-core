@@ -34,7 +34,7 @@ export class RomProcessor {
       conditionFiles.push(file.name);
 
       if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
-      else if (file.parts?.length) asmFiles.push(file);
+      else if (file.type.isBlock) asmFiles.push(file);
       else if (!file.struct) continue;
       
       const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);

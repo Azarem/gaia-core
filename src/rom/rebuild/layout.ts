@@ -111,6 +111,7 @@ export class RomLayout {
               newFile.rawData = file.rawData!.slice(end);
               newFile.size = newFile.rawData.length;
               this.sfxFiles.unshift(newFile);
+              file.sizeHeader = file.rawData!.length;
               file.rawData = file.rawData!.slice(0, end);
               file.size -= offset;
               offset = 0;
@@ -135,13 +136,13 @@ export class RomLayout {
       this.bestOffset = 0;
 
       // Pass 1: assembly preferred in upper banks
-      this.testDepth(0, 0, remain, this.currentUpper);
+      this.testDepth(0, this.bestDepth, this.bestRemain, true);
 
       // Pass 2: if upper, also try binary-only fill
-      if (this.currentUpper) {
-        this.bestOffset = this.bestDepth;
-        this.testDepth(0, this.bestDepth, this.bestRemain, false);
-      }
+      //if (this.currentUpper) {
+      this.bestOffset = this.bestDepth;
+      this.testDepth(0, this.bestDepth, this.bestRemain, false);
+      //}
 
       // Assign positions for best selection
       let position = start;
@@ -172,16 +173,18 @@ export class RomLayout {
       const fileSize = file.size || 0;
       if (fileSize > remain) continue;
 
+      const isUpper = file.upper ?? (file.type.isPatch || file.type.isBlock ? true : this.currentUpper);
+
+      if(isUpper !== this.currentUpper) continue;
+
       // Assembly preference and constraints
       if (file.parts) {
         if (!asmMode) {
-          if (!this.currentUpper || ((file.bank ?? -1) >= 0)) continue;
+          if (file.bank !== undefined) continue;
         } else if (file.bank !== this.currentBank) {
           continue;
         }
       } else if (asmMode) {
-        continue;
-      } else if (file.upper && !this.currentUpper) {
         continue;
       }
 

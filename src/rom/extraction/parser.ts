@@ -66,10 +66,11 @@ export class TypeParser {
     if (fixedTypeName[0] === '&') {
       const bankIx = fixedTypeName.indexOf('$');
       if(bankIx !== -1) {
-        bank = parseInt(fixedTypeName.substring(bankIx + 1, fixedTypeName.length), 16);
+        if(fixedTypeName[bankIx + 1] === '$') bank = reg?.value['dataBank'];
+        else bank = parseInt(fixedTypeName.substring(bankIx + 1, fixedTypeName.length), 16);
         fixedTypeName = fixedTypeName.substring(0, bankIx);
       }
-      return this.parseLocation(this._romDataReader.readUShort(), bank, fixedTypeName.substring(1), AddressType.Offset, isSoft);
+      return this.parseLocation(this._romDataReader.readUShort(), bank, fixedTypeName.substring(1), AddressType.Offset, isSoft, reg);
     }
 
     // Shortcut for symbolic Addresses
@@ -283,25 +284,25 @@ export class TypeParser {
       //adrs = Address.fromInt(loc, this._blockReader._root.config.memoryMode);
     } else {
       if(addrType === AddressType.OddLocation) {
-        const bankFlag = this._blockReader._root.config.cpuMode === CpuMode.Fast ? 0x80 : 0;
+        const bankFlag = this._blockReader._root.config.cpuMode === CpuMode.Fast ? Address.FAST_BANK_FLAG : 0;
         const bankReal = this._romDataReader.position >> 16;
-        const isVeryOdd = !this._blockReader._root.config.oddLocationBase || bankReal < this._blockReader._root.config.oddLocationBase;
-        const bankBase = ((isVeryOdd ? 0x40 : 0) + bankReal) | bankFlag;
-        const bankMax = (this._romDataReader.romData.length >> 16) | bankFlag;
-        const bankSpan = isVeryOdd ? 0 : ((0x40 | bankFlag) - bankMax);
+        const isVeryOdd = bankReal !== this._blockReader._root.config.oddLocationBase;
+        const bankSpan = this._blockReader._root.config.oddLocationSpan ?? (this._romDataReader.romData.length >> 16);
 
-        const hiOffset = (offset >> 8) & 0x7F;
-        const hiAdjust = ((hiOffset ^ ((offset >> 8) | (bank! << 8))) << 1) | 0x80 | hiOffset;
+        let oddBank = bank! << 1 | (offset & 0x8000 ? 1 : 0);
+        offset &= 0x7FFF;
 
-        const hiBank = (hiAdjust >> 8) + bankBase;
+        oddBank += bankReal;
 
-        offset = ((hiAdjust & 0xFF) << 8) | (offset & 0xFF);
-        bank = hiBank;
-
-        if(hiBank >= bankMax) {
-          bank += bankSpan;
-          offset &= 0x7FFF;
+        if(oddBank >= bankSpan) {
+          oddBank += Address.DATA_BANK_FLAG - bankSpan; 
+        } else if(isVeryOdd) {
+          oddBank |= Address.DATA_BANK_FLAG;
+        } else if(!isVeryOdd) {
+          offset |= 0x8000;
         }
+
+        bank = oddBank & 0x7F | bankFlag;
       }
       // Bank cannot be null, instead use bank from current position
       const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);

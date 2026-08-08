@@ -185,12 +185,13 @@ export class StringReader {
       if(ix + 6 >= str.length) break;
     
       const hexStr = str.substring(ix + 1, ix + 7);
-      const sloc = parseInt(hexStr, 16);
+      let sloc = parseInt(hexStr, 16);
 
       if(isNaN(sloc)) break;
     
       const addrs = new Address((sloc >> 16) & 0xFF, sloc & 0xFFFF, this._blockReader._root.config.memoryMode);
       if (addrs.isROM) {
+        sloc = addrs.toLocation();
         this._blockReader.resolveInclude(sloc, false);
         const name = this._blockReader._referenceManager.resolveName(sloc, AddressType.Unknown, false);
         const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);

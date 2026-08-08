@@ -42,6 +42,7 @@ export class RomWriter {
   }
 
   public allocate(pages: number): void {
+    if(this.root.config.memoryMode !== MemoryMapMode.Lo && (pages & 1) !== 0) pages++;
     const size = pages * RomProcessingConstants.PAGE_SIZE;
     let bits = 0;
     let target = 1 << 10; // 1KB
@@ -52,7 +53,7 @@ export class RomWriter {
     }
 
     this.romSize = bits;
-    this.outBuffer = new Uint8Array(target);
+    this.outBuffer = new Uint8Array(size);
   }
 
   public writeHeaders(masterLookup: Map<string, number>): void {
@@ -297,8 +298,13 @@ export class RomWriter {
       if (file.compressed !== true) {
         if (file.type.header === -2) {
           remain -= 2;
-          buf[pos++] = remain & 0xFF;
-          buf[pos++] = (remain >> 8) & 0xFF;
+          if(file.sizeHeader !== undefined) {
+            buf[pos++] = file.sizeHeader & 0xFF;
+            buf[pos++] = (file.sizeHeader >> 8) & 0xFF;
+          } else {
+            buf[pos++] = remain & 0xFF;
+            buf[pos++] = (remain >> 8) & 0xFF;
+          }
         } else if (file.type.header > 0) {
           remain -= file.type.header;
           for (let i = 0; i < file.type.header; i++) buf[pos++] = data[srcPos++];
@@ -498,8 +504,27 @@ export class RomWriter {
             if(addrOffset !== undefined) {
               loc += addrOffset;
               if(fileLookup?.size) loc -= rootLoc;
-            }
-            else if(!isRelative && type !== AddressType.Location) {
+            } else if (type === AddressType.OddLocation) {
+              const bankFlag = root.config.cpuMode === CpuMode.Fast ? Address.FAST_BANK_FLAG : 0;
+              const bankReal = position >> 16;
+              const isVeryOdd = bankReal !== root.config.oddLocationBase;
+              //const bankBase = ((isVeryOdd ? Address.DATA_BANK_FLAG : 0) + bankReal) | bankFlag;
+              const bankMax = root.config.oddLocationSpan ?? (outBuffer.length >> 16);
+              //const bankSpan = (Address.DATA_BANK_FLAG - bankMax);
+ 
+              let oddBank = (loc >> 16);
+              if(loc & 0x8000) {
+                oddBank -= bankReal;
+              } else {
+                oddBank += bankMax - bankReal;
+              }
+
+              oddBank &= 0xFF;
+
+              currentObj = new Long((oddBank << 15) | (loc & 0x7FFF));
+              continue;
+
+            } else if(!isRelative && type !== AddressType.Location) {
               const address = Address.fromLocation(loc, root.config.memoryMode, root.config.cpuMode);
               loc = address.toInt();
             }
@@ -517,6 +542,7 @@ export class RomWriter {
                 continue;
               case AddressType.Address:
               case AddressType.Location:
+              case AddressType.OddLocation:
                 currentObj = new Long(loc);
                 continue;
               case AddressType.Unknown:
@@ -531,6 +557,7 @@ export class RomWriter {
             for (let i = 0; i < currentObj.size; i++) {
               outBuffer[position++] = value & 0xFF;
               value >>= 8;
+              if(!parentOp) opos++;
             }
             break;
           } else if (typeof currentObj === 'number') {
@@ -541,17 +568,20 @@ export class RomWriter {
               // byte
               outBuffer[position] = num & 0xFF;
               position++;
+              if(!parentOp) opos++;
             } else if (num <= 0xFFFF && size <= 3) {
               // ushort
               outBuffer[position] = num & 0xFF;
               outBuffer[position + 1] = (num >> 8) & 0xFF;
               position += 2;
+              if(!parentOp) opos += 2;
             } else if (num <= 0xFFFFFF && size <= 4) {
               // 3-byte
               outBuffer[position] = num & 0xFF;
               outBuffer[position + 1] = (num >> 8) & 0xFF;
               outBuffer[position + 2] = (num >> 16) & 0xFF;
               position += 3;
+              if(!parentOp) opos += 3;
             } else {
               // 4-byte
               outBuffer[position] = num & 0xFF;
@@ -559,6 +589,7 @@ export class RomWriter {
               outBuffer[position + 2] = (num >> 16) & 0xFF;
               outBuffer[position + 3] = (num >> 24) & 0xFF;
               position += 4;
+              if(!parentOp) opos += 4;
             }
             break;
           } else if (RomWriter.isStringMarker(currentObj)) {

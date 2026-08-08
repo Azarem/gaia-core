@@ -33,6 +33,7 @@ export class ChunkFile {
   referenceManager?: ReferenceManager;
   isFile: boolean;
   struct?: string;
+  sizeHeader?: number;
 
   constructor(type: DbFileType, name: string, size: number = 0, location: number = 0) {
     this.type = type;
@@ -43,10 +44,12 @@ export class ChunkFile {
     this.compressed = type.compressed;
     this.isFile = !type.isBlock;
     this.struct = type.struct ?? undefined;
+    this.base = type.base ?? undefined;
+    this.upper = type.upper ?? undefined;
   }
   
   public enrichWithRawDataFromDbFile(file: DbFile, rom: Uint8Array, compression: ICompressionProvider | undefined): void {
-    this.upper = file.upper ?? this.upper;
+    this.upper = file.upper ?? this.type.upper ?? this.upper;
     this.size = file.end - file.start;
     this.location = file.start;
     this.base = file.base ?? this.type.base ?? this.base;
@@ -102,6 +105,7 @@ export class ChunkFile {
       throw new Error(`Block ${block.name} has no parts`);
     }
     this.location = block.parts[0].start;
+    this.upper = (this.location & 0x8000) !== 0;
     this.bank = block.movable ? undefined : (memoryMode === MemoryMapMode.Lo ? this.location >> 15 : this.location >> 16);
     this.transforms = block.transforms;
     this.postProcess = block.postProcess;

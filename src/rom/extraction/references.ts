@@ -202,8 +202,9 @@ export class ReferenceManager {
 
     let label: string | undefined;
     const structType = this.tryGetStruct(rewrite);
+    const isString = structType.found && this.root.stringTypes[structType.chunkType!];
     
-    if (structType.chunkType === BlockReaderConstants.WIDE_STRING_TYPE) {
+    if (isString) {
       this.markerTable.set(rewrite, absOffset);
       this.markerTable.set(location, absOffset);
       label = cmd === '-' ? BlockReaderConstants.NEGATIVE_MARKER_FORMAT : BlockReaderConstants.MARKER_FORMAT;
@@ -226,9 +227,38 @@ export class ReferenceManager {
     }
 
     let result = closestName;
-    const structType = this.tryGetStruct(closestLocation);
+    let structType = this.tryGetStruct(closestLocation);
 
-    if (structType.chunkType === BlockReaderConstants.WIDE_STRING_TYPE) {
+    if(!structType.found) {
+      let stringDistance = BlockReaderConstants.REF_SEARCH_MAX_RANGE;
+      let stringName: string | undefined;
+      let stringLocation: number | undefined;
+
+      for (const [entryKey, entryValue] of this.structTable) {
+        if (entryKey > location) {
+          continue;
+        }
+
+        const distance = location - entryKey;
+        if (distance >= stringDistance) {
+          continue;
+        }
+
+        stringDistance = distance;
+        stringName = entryValue;
+        stringLocation = entryKey;
+
+        if (stringDistance === 1) {
+          break;
+        }
+      }
+
+      structType = { found: true, chunkType: stringName, isSoft: false };
+    }
+
+    const isString = structType.found && this.root.stringTypes[structType.chunkType!];
+
+    if (isString) {
       this.markerTable.set(closestLocation, closestDistance);
       this.markerTable.set(location, closestDistance);
       result += BlockReaderConstants.MARKER_FORMAT;

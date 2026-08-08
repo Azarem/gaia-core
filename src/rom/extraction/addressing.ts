@@ -40,7 +40,7 @@ export class AddressingModeHandler {
   constructor(blockReader: BlockReader, transformProcessor: TransformProcessor) {
     this._blockReader = blockReader;
     this._transformProcessor = transformProcessor;
-    this._copProcessor = new CopCommandProcessor(blockReader);
+    this._copProcessor = new CopCommandProcessor(blockReader, transformProcessor);
     this._dataReader = blockReader._romDataReader;
   }
 
@@ -104,7 +104,7 @@ export class AddressingModeHandler {
         break;
 
       case 'StackInterrupt':
-        this.handleStackInterruptMode(code.mnem, operands, context);
+        this.handleStackInterruptMode(code.mnem, operands, context, reg);
         break;
 
       default:
@@ -210,7 +210,7 @@ export class AddressingModeHandler {
     operands.push(new Byte(this._dataReader.readByte()));
   }
 
-  private handleStackInterruptMode(mnemonic: string, operands: unknown[], context: OperationContext): void {
+  private handleStackInterruptMode(mnemonic: string, operands: unknown[], context: OperationContext, reg: Registers): void {
     const cmd = this._dataReader.readByte();
     operands.push(new Byte(cmd));
 
@@ -222,7 +222,7 @@ export class AddressingModeHandler {
       }
 
       context.copDef = copDef;
-      this._copProcessor.parseCopCommand(copDef, operands);
+      this._copProcessor.parseCopCommand(copDef, operands, reg);
     }
   }
 

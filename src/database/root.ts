@@ -19,6 +19,7 @@ import type { BaseRomFileData, ProjectFileData, ProjectPayload } from '../supaba
 import { OpCode } from './opcode';
 import { fromSupabaseByProject, fromSupabaseByGameRom } from '../supabase/rom-loader';
 import { RomProcessingConstants } from '../types/constants';
+import { MemoryMapMode } from '../types/addressing';
 import { ChunkFile } from '../types/files';
 import { DbScene } from './scenes';
 import { DbGroup } from './groups';
@@ -326,8 +327,19 @@ export class DbRootUtils {
         const sourceFile = root.files.find(x => x.name === entry.name && x.type === type.type);
         if (sourceFile) {
           chunkFile.location = sourceFile.start;
-          chunkFile.upper = sourceFile.upper;
-          chunkFile.compressed = sourceFile.compressed;
+          chunkFile.upper = sourceFile.upper ?? chunkFile.upper;
+          chunkFile.compressed = sourceFile.compressed ?? chunkFile.compressed;
+          chunkFile.base = sourceFile.base ?? chunkFile.base;
+          chunkFile.upper = sourceFile.upper ?? chunkFile.upper;
+        } else if (type.isBlock) {
+          const sourceBlock = root.blocks.find(x => x.name === entry.name);
+          if(sourceBlock) {
+            chunkFile.location = sourceBlock.parts[0].start;
+            chunkFile.upper = root.config.memoryMode === MemoryMapMode.Lo || (chunkFile.location & 0x8000) !== 0;
+            chunkFile.base = sourceBlock.base ?? chunkFile.base;
+          }
+        } else if (type.isPatch) { 
+          chunkFile.upper = true;
         }
         
         chunkFiles.push(chunkFile);

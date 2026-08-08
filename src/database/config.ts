@@ -24,4 +24,5 @@ export interface DbConfig {
   ramSize: number;
   defaultBank?: number;
   oddLocationBase?: number;
+  oddLocationSpan?: number;
 } 

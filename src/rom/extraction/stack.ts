@@ -34,7 +34,9 @@ export class StackOperations {
         break;
         
       case 'PLB':
-        this._registers.value['dataBank'] = this._registers.stack.popByte();
+        let bank = this._registers.stack.popByte();
+        if (bank === 0) bank = 0x81;
+        this._registers.value['dataBank'] = bank;
         break;
         
       case 'PHP':

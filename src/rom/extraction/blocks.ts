@@ -285,10 +285,12 @@ export class BlockReader {
     let current = part.structName || BlockReaderConstants.BINARY_TYPE;
     const chunks: TableEntry[] = [];
     const reg = new Registers(this._root.config.memoryMode); //platform.createRegisters()
-    const bank = part.bank;
+    const bank : number | undefined = undefined;
     let last: TableEntry | null = null;
 
     while (this._romDataReader.position < this._partEnd) {
+      this.hydrateRegisters(reg);
+  
       const structResult = this._referenceManager.tryGetStruct(this._romDataReader.position);
       if (structResult.found) {
         current = structResult.isSoft ? "~" + structResult.chunkType! : structResult.chunkType!;

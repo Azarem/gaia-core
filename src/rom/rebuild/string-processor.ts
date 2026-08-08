@@ -183,9 +183,9 @@ export class StringProcessor {
 
   private processStringCommand(cmd: DbStringCommand, stringType: DbStringType, parts: string[]): void {
     const hasPointer = cmd.types.includes(MemberType.Address) || cmd.types.includes(MemberType.Offset);
-    if (hasPointer) {
-      this.flushBuffer(stringType, true);
-    }
+    // if (hasPointer) {
+    //   this.flushBuffer(stringType, true);
+    // }
 
     for (let y = 0, pix = 1; y < cmd.types.length; y++, pix++) {
       switch (cmd.types[y]) {
@@ -212,6 +212,7 @@ export class StringProcessor {
 
         case MemberType.Offset:
         case MemberType.Address:
+          this.flushBuffer(stringType, true);
           // Have to keep these for later since we don't have lookups yet
           //this.flushBuffer(stringType, false);
           this.context.currentBlock!.objList.push(parts[pix]);
@@ -220,8 +221,8 @@ export class StringProcessor {
       }
     }
 
-    if (hasPointer) {
-      this.flushBuffer(stringType, false);
-    }
+    // if (hasPointer) {
+    //   this.flushBuffer(stringType, false);
+    // }
   }
 }

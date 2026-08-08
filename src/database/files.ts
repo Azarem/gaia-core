@@ -42,6 +42,7 @@ export class DbFileType {
   public compressed?: boolean;
   public struct?: string;
   public base?: number;
+  public upper?: boolean;
 
   constructor(data: Partial<DbFileType>) {
     if(!data.name) throw new Error('Name is required');
@@ -57,5 +58,6 @@ export class DbFileType {
     this.compressed = data.compressed ?? undefined;
     this.struct = data.struct ?? undefined;
     this.base = data.base ?? undefined;
+    this.upper = data.upper ?? undefined;
   }
 }

@@ -381,9 +381,7 @@ export class BlockWriter {
       const objectLines = this.writeObject(t.object, depth + 1);
       lines.push('');
       lines.push(`${name} ${objectLines[0]}`);
-      if (objectLines.length > 1) {
-        lines.push(...objectLines.slice(1));
-      }
+      if(objectLines.length > 1) lines.push(...objectLines.slice(1)); 
     }
     
     this._isInline = isInline;

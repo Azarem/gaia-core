@@ -54,7 +54,7 @@ export class TransformProcessor {
     this.applyTransform(op2Label, 1, operands);
   }
 
-  private applyTransform(transform: string | null, operandIndex: number, operands: unknown[]): void {
+  public applyTransform(transform: string | null, operandIndex: number, operands: unknown[]): void {
     if (transform === null || transform === undefined || operandIndex >= operands.length) {
       return;
     }

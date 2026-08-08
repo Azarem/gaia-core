@@ -6,7 +6,6 @@
 export class CopDef {
   public id: number;
   public name: string;
-  public size: number;
   public parts: string[];
   public halt: boolean;
   public conditions?: CopCondition[];
@@ -19,7 +18,6 @@ export class CopDef {
     this.id = data.id;
     this.parts = data.parts ?? [];
     this.halt = data.halt ?? false;
-    this.size = data.size ?? 0;
     this.conditions = data.conditions ?? [];
   }
 }
@@ -27,6 +25,6 @@ export class CopDef {
 export interface CopCondition {
   offset: number;
   value: number;
-  size: number;
   parts: string[];
+  logic?: string;
 }

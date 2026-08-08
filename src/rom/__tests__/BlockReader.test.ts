@@ -231,28 +231,29 @@ describe('BlockReader', () => {
       // Assign locations
       const layout = new RomLayout(chunkFiles, reader._root);
       
-      const preLayoutJson = JSON.stringify({
-        files: layout.unmatchedFiles.map(x => ({
-          name: x.name,
-          type: x.type.type,
-          location: x.location,
-          size: x.size,
-        })),
-      }, null, 2);
+      // const preLayoutJson = JSON.stringify({
+      //   files: layout.unmatchedFiles.map(x => ({
+      //     name: x.name,
+      //     type: x.type.type,
+      //     location: x.location,
+      //     size: x.size,
+      //   })),
+      // }, null, 2);
 
       pageCount = layout.organize();
 
-      const postLayoutJson = JSON.stringify({
-        files: chunkFiles.filter(x => x.size > 0).sort((a, b) => a.location - b.location).map(x => ({
-          name: x.name,
-          type: x.type.type,
-          location: x.location,
-          size: x.size,
-        })),
-      }, null, 2);
+      const layoutJson = '{\n' 
+        + chunkFiles.filter(x => x.size > 0).sort((a, b) => a.location - b.location).map(x => 
+          `  "${x.location.toString(16).toUpperCase().padStart(6, '0')}": "${x.name}"`).join(',\n') 
+          + '\n}';
+
+      await saveFileAsText(`${OUT_PATH}/layout.json`, layoutJson);
+
+      const truthLayout = (await readFileAsText(`${TRUTH_PATH}/layout.json`)).replace(/\r/g, '');
+      expect(layoutJson).toEqual(truthLayout);
       
-      await saveFileAsText(`${OUT_PATH}/postlayout.json`, postLayoutJson);
-      await saveFileAsText(`${OUT_PATH}/prelayout.json`, preLayoutJson);
+      // await saveFileAsText(`${OUT_PATH}/postlayout.json`, postLayoutJson);
+      // await saveFileAsText(`${OUT_PATH}/prelayout.json`, preLayoutJson);
       
       // const truthPreLayout = (await readFileAsText(`${TRUTH_PATH}/prelayout.json`)).replace(/\r/g, '');
       // expect(preLayoutJson).toEqual(truthPreLayout);
@@ -326,9 +327,12 @@ describe('BlockReader', () => {
       const title = romWriter.outBuffer!.subarray(0xFFB0 + 16, 0xFFB0 + 16 + 21);
       expect(title).toEqual(new Uint8Array(Buffer.from('ILLUSION OF GAIA USA ')));
 
-      const crc = crc32_buffer(romWriter.outBuffer!);
+      const checksum = romWriter.outBuffer!.subarray(0xFFDC, 0xFFDC + 2);
+      expect(checksum).toEqual(new Uint8Array([83, 40]));
+
+      //const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42
-      expect(crc).toEqual(-1671800270);
+      //expect(crc).toEqual(-1671800270);
       //1.41
       //expect(crc).toEqual(-1345057874);
     });

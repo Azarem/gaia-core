@@ -16,9 +16,9 @@ export class RomProcessingConstants {
   public static readonly WHITESPACE = [' ', '\t'];
   public static readonly OPERATORS = ['-', '+'];
   public static readonly COMMA_SPACE = [',', ' ', '\t'];
-  public static readonly ADDRESS_SPACE = ['@', '&', '^', '#', '$', '%', '*'];
+  public static readonly ADDRESS_SPACE = ['@', '&', '^', '#', '$', '%', '*', '!'];
   public static readonly SYMBOL_SPACE = [',', ' ', '\t', '<', '>', '(', ')', ':', '[', ']', '{', '}', '`', '~', '|'];
-  public static readonly LABEL_SPACE = ['[', '{', '#', '`', '~', '|', ':'];
+  public static readonly LABEL_SPACE = ['[', '{', '#', '`', '~', '|', ':', '$', '&', '^', '*'];
   public static readonly OBJECT_SPACE = ['<', '['];
   public static readonly COP_SPLIT_CHARS = [' ', '\t', ',', '(', ')', '[', ']', '$', '#'];
 
@@ -28,7 +28,7 @@ export class RomProcessingConstants {
   public static readonly SYMBOL_SPACE_REGEX = /[, \t<>()\:\[\]{}`~|]/;
   public static readonly LABEL_SPACE_REGEX = /[\[{#`~|:]/;
   public static readonly OBJECT_SPACE_REGEX = /[<\[]/;
-  public static readonly ADDRESS_SPACE_REGEX = /[@&^#$%*]/;
+  public static readonly ADDRESS_SPACE_REGEX = /[@&^#$%*!]/;
   public static readonly COP_SPLIT_REGEX = /[ \t,()[\]$#]/;
   
   // Trim patterns (for start/end of string)
@@ -67,11 +67,13 @@ export class RomProcessingConstants {
         return 4;
 
       case 'string':
-        if(!obj.length) return 0;
+        let str = obj as string;
+        if(!str.length) return 0;
 
-        switch (obj[0]) {
+        switch (str[0]) {
           case '@':
           case '%':
+          case '!':
             return 3;
           case '*':
           case '&':
@@ -80,14 +82,14 @@ export class RomProcessingConstants {
             return 1;
         }
 
-        switch (obj) {
-          case "Byte":
+        switch (str.toLowerCase()) {
+          case "byte":
             return 1;
-          case "Word":
+          case "word":
+          case "offset":
             return 2;
-          case "Offset":
-            return 2;
-          case "Address":
+          case "address":
+          case "long":
             return 3;
         }
         
