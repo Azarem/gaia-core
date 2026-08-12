@@ -324,9 +324,8 @@ export class BlockWriter {
         break;
 
       case ObjectType.Address:
-        objLines = isArray 
-          ? [`$#${(obj as Address).toString()}`] 
-          : [`$${(obj as Address).toString()}`];
+        const addr = obj as Address;
+        objLines = [`$${isArray ? '#' : ''}${addr.isShort ? addr.toOffsetString() : addr.toString()}`];
         break;
 
       case ObjectType.ByteArray:
@@ -521,8 +520,8 @@ export class BlockWriter {
       let mix = 0;
       
       while (mix < marker) {
-        if (str[six] === '[') {
-          const eix = str.indexOf(']', six);
+        if (str[six] === '[' || str[six] === '{') {
+          const eix = str.indexOf(str[six] === '[' ? ']' : '}', six);
           const parts = str.substring(six + 1, eix).split(/[,: ]/);
           const cmd = stringObj.type.commands[parts[0]];
           if(cmd) {
@@ -561,16 +560,24 @@ export class BlockWriter {
     }
 
     //Expand dictionaries
-    const dictionaries = stringObj.type.dictionaries;
-    for(const dictionary of Object.values(dictionaries)) {
-      const commandName = `[${dictionary.commandName ?? dictionary.command?.toString(16).padEnd(2, '0').toUpperCase()}:`;
-      let cmdIx: number;
-      while((cmdIx = str.indexOf(commandName)) >= 0) {
-        const endIx = str.indexOf(']', cmdIx);
-        const strIx = parseInt(str.substring(cmdIx + commandName.length, endIx), 16);
-        const newText = dictionary.entries[strIx];
-        str = str.substring(0, cmdIx) + newText + str.substring(endIx + 1);
+    let dix = -1;
+    while((dix = str.indexOf('{')) >= 0) {
+      const eix = str.indexOf('}', dix);
+      const parts = str.substring(dix + 1, eix).split(/[,: ]/);
+      const cmd = stringObj.type.commands[parts[0]];
+      let entryText : string | undefined;
+
+      if(cmd?.dictionary && parts.length > 1) {
+        entryText = cmd.dictionary.entries[parseInt(parts[1], 16)];
+      } else {
+        const entryIx = parseInt(parts[0], 16);
+        const dictionary = isNaN(entryIx) ? undefined 
+          : Object.values(stringObj.type.dictionaries).find(d => 
+            d.command === undefined && d.base !== undefined && entryIx >= d.base && entryIx < d.base + d.entries.length);
+        if(dictionary) entryText = dictionary.entries[entryIx - dictionary.base!];
       }
+
+      str = str.substring(0, dix) + (entryText ?? '') + str.substring(eix + 1);
     }
 
     //Remove marker bytes

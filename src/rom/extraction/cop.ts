@@ -160,7 +160,7 @@ export class CopCommandProcessor {
 
     const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
 
-    const addr = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+    const addr = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode, type === AddressType.Offset);
     if (addr.isROM) {
       const location = addr.toLocation();
       if (partStr !== 'Address' && isPtr && !this._blockReader._root.rewrites[location]) {

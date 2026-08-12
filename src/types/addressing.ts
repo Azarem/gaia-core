@@ -48,15 +48,17 @@ export class Address {
   public offset: number;
   public bank: number;
   public mode: MemoryMapMode;
+  public isShort: boolean;
   
   public static readonly UPPER_BANK = 0x8000;
   public static readonly DATA_BANK_FLAG = 0x40;
   public static readonly FAST_BANK_FLAG = 0x80;
 
-  constructor(bank: number, offset: number, mode: MemoryMapMode) {
+  constructor(bank: number, offset: number, mode: MemoryMapMode, isShort: boolean = false) {
     this.bank = bank & 0xFF;
     this.offset = offset & 0xFFFF;
     this.mode = mode;
+    this.isShort = isShort;
   }
 
   public get isROM(): boolean {
@@ -140,6 +142,10 @@ export class Address {
 
   public toInt(): number {
     return (this.bank << 16) | this.offset;
+  }
+
+  public toOffsetString(): string {
+    return this.offset.toString(16).toUpperCase().padStart(4, '0');
   }
 
   public toString(): string {

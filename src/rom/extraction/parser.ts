@@ -308,7 +308,7 @@ export class TypeParser {
       const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
   
       // Create the address with resolved bank
-      adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+      adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode, addrType === AddressType.Offset);
   
       // If we have a system address, keep it as is
       if (!adrs.isROM) return adrs;

@@ -72,7 +72,7 @@ export class TransformProcessor {
     const opnd = operands[operandIndex] as any;
     const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
     const offset = opnd && 'value' in opnd ? opnd['value'] : opnd as number;
-    const adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode);
+    const adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode, true);
     const loc = adrs.toLocation();
 
     operands[operandIndex] = new LocationWrapper(loc, AddressType.Offset);

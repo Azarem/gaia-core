@@ -194,7 +194,12 @@ export class DbRootUtils {
         const dictionary = new DbStringDictionary({...y[1], name: y[0]});
         acc[y[0]] = dictionary;
         if(dictionary.command !== undefined) {
-          commands[dictionary.command] = new DbStringCommand({id: dictionary.command, name: dictionary.name, dictionary: dictionary});
+          const existingCommand = Object.values(commands).find(z => z.id === dictionary.command);
+          if (existingCommand) existingCommand.dictionary = dictionary;
+          else {
+            const name = dictionary.commandName ?? dictionary.command?.toString(16).padStart(2, '0').toUpperCase();
+            commands[name] = new DbStringCommand({id: dictionary.command, name, dictionary, types: [ "Byte" ]});
+          }
         }
         return acc;
       }, {} as Record<string, DbStringDictionary>);

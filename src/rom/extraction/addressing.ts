@@ -253,7 +253,7 @@ export class AddressingModeHandler {
       ?? this._blockReader._root.config.defaultBank
       ?? 0x81;
 
-    const addr = new Address(resolvedBank, refLoc, registers.mode);
+    const addr = new Address(resolvedBank, refLoc, registers.mode, true);
     if (addr.isROM) {
       const wrapper = new LocationWrapper(addr.toLocation(), AddressType.Offset);
       if (isJump) {

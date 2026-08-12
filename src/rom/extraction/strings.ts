@@ -29,58 +29,51 @@ export class StringReader {
   }
 
   private resolveCommand(cmd: DbStringCommand, builder: string[]): void {
-    if(cmd.dictionary) {
-      builder.push(`[${cmd.dictionary.commandName ?? cmd.dictionary.command?.toString(16).padEnd(2, '0').toUpperCase()}:${this._romDataReader.readByte().toString(16).padEnd(2, '0').toUpperCase()}]`);
-    } else if (cmd.types && cmd.types.length > 0) {
-      builder.push(`[${cmd.name}`);
 
-      let first = true;
-      for (const t of cmd.types) {
-        if (first) {
-          builder.push(':');
-          first = false;
-        } else {
-          builder.push(',');
-        }
+    builder.push(cmd.dictionary ? "{" : "[");
+    builder.push(cmd.name);
 
-        switch (t) {
-          case MemberType.Byte:
-            builder.push(this._romDataReader.readByte().toString(16).toUpperCase());
-            break;
-          case MemberType.Word:
-            builder.push(this._romDataReader.readUShort().toString(16).toUpperCase());
-            break;
-          case MemberType.Offset:
-            const loc = this._romDataReader.readUShort() | 
-              (Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode) << 16);
-            builder.push(`^${loc.toString(16).toUpperCase().padStart(6, '0')}`);
-            break;
-          case MemberType.Address:
-            builder.push(`~${this._romDataReader.readAddress().toString(16).toUpperCase().padStart(6, '0')}`);
-            break;
-          case MemberType.Binary:
-            let sfirst = true;
-            do {
-              const r = this._romDataReader.readByte();
-              if (cmd.delimiter !== undefined && r === cmd.delimiter) {
-                break;
-              }
-              if (sfirst) {
-                sfirst = false;
-              } else {
-                builder.push(',');
-              }
-              builder.push(r.toString(16).toUpperCase());
-            } while (this._blockReader.partCanContinue());
-            break;
-          default:
-            throw new Error('Unsupported member type');
-        }
+    let first = true;
+    for (const t of cmd.types ?? []) {
+      builder.push(first ? ":" : ",");
+      first = false;
+
+      switch (t) {
+        case MemberType.Byte:
+          builder.push(this._romDataReader.readByte().toString(16).toUpperCase());
+          break;
+        case MemberType.Word:
+          builder.push(this._romDataReader.readUShort().toString(16).toUpperCase());
+          break;
+        case MemberType.Offset:
+          const loc = this._romDataReader.readUShort() | 
+            (Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode) << 16);
+          builder.push(`^${loc.toString(16).toUpperCase().padStart(6, '0')}`);
+          break;
+        case MemberType.Address:
+          builder.push(`~${this._romDataReader.readAddress().toString(16).toUpperCase().padStart(6, '0')}`);
+          break;
+        case MemberType.Binary:
+          let sfirst = true;
+          do {
+            const r = this._romDataReader.readByte();
+            if (cmd.delimiter !== undefined && r === cmd.delimiter) {
+              break;
+            }
+            if (sfirst) {
+              sfirst = false;
+            } else {
+              builder.push(',');
+            }
+            builder.push(r.toString(16).toUpperCase());
+          } while (this._blockReader.partCanContinue());
+          break;
+        default:
+          throw new Error('Unsupported member type');
       }
-      builder.push(']');
-    } else {
-      builder.push(`[${cmd.name}]`);
     }
+      
+    builder.push(cmd.dictionary ? "}" : "]");
   }
 
   public parseString(stringType: DbStringType, fixedSize: number): StringWrapper {
@@ -120,8 +113,9 @@ export class StringReader {
         let found = false;
 
         for(const dictionary of Object.values(dictionaries)) {
-          if(dictionary.base !== undefined && c >= dictionary.base && c <= dictionary.base + dictionary.entries.length) {
-            builder.push(dictionary.entries[c - dictionary.base]);
+          if(dictionary.command === undefined && dictionary.base !== undefined 
+            && c >= dictionary.base && c < dictionary.base + dictionary.entries.length) {
+            builder.push(`{${c.toString(16).padStart(2, '0').toUpperCase()}}`);
             found = true;
             break;
           }
