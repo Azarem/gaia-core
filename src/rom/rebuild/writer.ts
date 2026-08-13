@@ -504,26 +504,25 @@ export class RomWriter {
             if(addrOffset !== undefined) {
               loc += addrOffset;
               if(fileLookup?.size) loc -= rootLoc;
-            } else if (type === AddressType.OddLocation) {
-              const bankFlag = root.config.cpuMode === CpuMode.Fast ? Address.FAST_BANK_FLAG : 0;
-              const bankReal = position >> 16;
-              const isVeryOdd = bankReal !== root.config.oddLocationBase;
-              //const bankBase = ((isVeryOdd ? Address.DATA_BANK_FLAG : 0) + bankReal) | bankFlag;
-              const bankMax = root.config.oddLocationSpan ?? (outBuffer.length >> 16);
-              //const bankSpan = (Address.DATA_BANK_FLAG - bankMax);
+            // } else if (type === AddressType.OddLocation) {
+            //   const bankFlag = root.config.cpuMode === CpuMode.Fast ? Address.FAST_BANK_FLAG : 0;
+            //   const bankReal = position >> 16;
+            //   const isVeryOdd = bankReal !== root.config.oddLocationBase;
+            //   //const bankBase = ((isVeryOdd ? Address.DATA_BANK_FLAG : 0) + bankReal) | bankFlag;
+            //   const bankMax = root.config.oddLocationSpan ?? (outBuffer.length >> 16);
+            //   //const bankSpan = (Address.DATA_BANK_FLAG - bankMax);
  
-              let oddBank = (loc >> 16);
-              if(loc & 0x8000) {
-                oddBank -= bankReal;
-              } else {
-                oddBank += bankMax - bankReal;
-              }
+            //   let oddBank = (loc >> 16);
+            //   if(loc & 0x8000) {
+            //     oddBank -= bankReal;
+            //   } else {
+            //     oddBank += bankMax - bankReal;
+            //   }
 
-              oddBank &= 0xFF;
+            //   oddBank &= 0xFF;
 
-              currentObj = new Long((oddBank << 15) | (loc & 0x7FFF));
-              continue;
-
+            //   currentObj = new Long((oddBank << 15) | (loc & 0x7FFF));
+            //   continue;
             } else if(!isRelative && type !== AddressType.Location) {
               const address = Address.fromLocation(loc, root.config.memoryMode, root.config.cpuMode);
               loc = address.toInt();
