@@ -74,6 +74,7 @@ export class StringReader {
     }
       
     builder.push(cmd.dictionary ? "}" : "]");
+    if(cmd.newline) builder.push(`\\${RomProcessingConstants.NEWLINE}`);
   }
 
   public parseString(stringType: DbStringType, fixedSize: number): StringWrapper {

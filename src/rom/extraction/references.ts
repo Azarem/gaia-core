@@ -140,132 +140,118 @@ export class ReferenceManager {
     return undefined;
   }
 
-  public resolveName(location: number, type: AddressType, isBranch: boolean): string {
+  public resolveName(location: number, type: AddressType, isBranch: boolean, block?: ChunkFile): string {
     const prefix = Address.codeFromType(type);
     let name: string | undefined;
     let label: string | undefined;
-    let resolvedLocation = location;
 
     // Handle rewrites first
-    const rewrite = this.root.rewrites[location];
+    const rewrite = !block?.compressed ? this.root.rewrites[location] : undefined;
     if (rewrite !== undefined) {
-      const result = this.processRewrite(location, rewrite);
-      resolvedLocation = result.location;
-      label = result.label;
+      name = this.tryGetName(rewrite).referenceName;
+      if (!name) throw new Error('Rewrite reference not found');
+      label = this.processClosestMatch(location, rewrite);
     }
 
     //name = ChunkFileUtils.isOutside(block, resolvedLocation) && this.fileTable.get(resolvedLocation) || null;
-    
+    // if(block) {
+    //   name = this.fileTable.get(block.location);
+    //   if(name && block.includes?.has(name)) name = undefined;
+    // }
+
     // Try to get existing reference
-    name = this.tryGetName(resolvedLocation).referenceName;
+    if (!name) name = this.tryGetName(location).referenceName;
 
     if (!name) {
-      name = isBranch ? 
-        this.createBranchLabel(resolvedLocation) : 
-        this.findClosestReference(resolvedLocation) || this.createFallbackName(resolvedLocation);
+      if (isBranch) name = this.createBranchLabel(location);
+      else {
+        const closestReference = this.findClosestReference(location);
+        if (closestReference) { name = closestReference.name; label = closestReference.label; }
+        else name = this.createFallbackName(location);
+      }
     }
-
+    
     return `${prefix || ''}${name}${label || ''}`;
   }
 
-  public findClosestReference(location: number): string | null {
+  public findClosestReference(location: number): { name: string; label: string } | undefined {
     let closestDistance = BlockReaderConstants.REF_SEARCH_MAX_RANGE;
-    let closestName: string | null = null;
-    let closestLocation: number | null = null;
+    let name: string | undefined;
+    let closestLocation: number | undefined;
 
     for (const [entryKey, entryValue] of this.nameTable) {
-      if (entryKey > location) {
-        continue;
-      }
+      if (entryKey > location) continue;
 
       const distance = location - entryKey;
-      if (distance >= closestDistance) {
-        continue;
-      }
+      if (distance >= closestDistance) continue;
 
       closestDistance = distance;
-      closestName = entryValue;
+      name = entryValue;
       closestLocation = entryKey;
 
-      if (closestDistance === 1) {
-        break;
-      }
+      if (closestDistance === 1) break;
     }
 
-    return this.processClosestMatch(location, closestName, closestLocation, closestDistance);
+    return name ? { name, label: this.processClosestMatch(location, closestLocation!) } : undefined;
   }
 
-  private processRewrite(location: number, rewrite: number): { location: number; label?: string } {
-    const offset = location - rewrite;
-    const cmd = offset < 0 ? '-' : '+';
-    const absOffset = Math.abs(offset);
+  // private processRewrite(location: number, rewrite: number): { location: number; label?: string } {
+  //   const offset = location - rewrite;
+  //   const cmd = offset < 0 ? '-' : '+';
+  //   const absOffset = Math.abs(offset);
 
-    let label: string | undefined;
-    const structType = this.tryGetStruct(rewrite);
-    const isString = structType.found && this.root.stringTypes[structType.chunkType!];
+  //   let label: string | undefined;
+  //   const structType = this.tryGetStruct(rewrite);
+  //   const isString = structType.found && this.root.stringTypes[structType.chunkType!];
     
-    if (isString) {
-      this.markerTable.set(rewrite, absOffset);
-      this.markerTable.set(location, absOffset);
-      label = cmd === '-' ? BlockReaderConstants.NEGATIVE_MARKER_FORMAT : BlockReaderConstants.MARKER_FORMAT;
-    } else {
-      const formatString = cmd === '-' ? BlockReaderConstants.NEGATIVE_OFFSET_FORMAT : BlockReaderConstants.OFFSET_FORMAT;
-      label = formatString.replace('{0:X}', absOffset.toString(16).toUpperCase());
-    }
+  //   if (isString) {
+  //     this.markerTable.set(rewrite, absOffset);
+  //     this.markerTable.set(location, absOffset);
+  //     label = cmd === '-' ? BlockReaderConstants.NEGATIVE_MARKER_FORMAT : BlockReaderConstants.MARKER_FORMAT;
+  //   } else {
+  //     const formatString = cmd === '-' ? BlockReaderConstants.NEGATIVE_OFFSET_FORMAT : BlockReaderConstants.OFFSET_FORMAT;
+  //     label = formatString.replace('{0:X}', absOffset.toString(16).toUpperCase());
+  //   }
 
-    return { location: rewrite, label };
-  }
+  //   return { location: rewrite, label };
+  // }
 
-  private processClosestMatch(
-    location: number, 
-    closestName: string | null, 
-    closestLocation: number | null, 
-    closestDistance: number
-  ): string | null {
-    if (!closestName || closestLocation === null) {
-      return null;
-    }
+  public processClosestMatch( location: number, closestLocation: number ) : string {
+    const offset = location - closestLocation;
+    if(!offset) return '';
 
-    let result = closestName;
     let structType = this.tryGetStruct(closestLocation);
 
     if(!structType.found) {
-      let stringDistance = BlockReaderConstants.REF_SEARCH_MAX_RANGE;
-      let stringName: string | undefined;
-      let stringLocation: number | undefined;
+      let structDistance = BlockReaderConstants.REF_SEARCH_MAX_RANGE;
+      let structName: string | undefined;
+      let structLocation: number | undefined;
 
       for (const [entryKey, entryValue] of this.structTable) {
-        if (entryKey > location) {
-          continue;
-        }
+        if (entryKey > closestLocation) continue;
 
-        const distance = location - entryKey;
-        if (distance >= stringDistance) {
-          continue;
-        }
+        const distance = closestLocation - entryKey;
+        if (distance >= structDistance) continue;
 
-        stringDistance = distance;
-        stringName = entryValue;
-        stringLocation = entryKey;
+        structDistance = distance;
+        structName = entryValue;
+        structLocation = entryKey;
 
-        if (stringDistance === 1) {
-          break;
-        }
+        if (structDistance === 1) break;
       }
 
-      structType = { found: true, chunkType: stringName, isSoft: false };
+      if (structName) structType = { found: true, chunkType: structName, isSoft: false };
     }
 
     const isString = structType.found && this.root.stringTypes[structType.chunkType!];
 
     if (isString) {
-      this.markerTable.set(closestLocation, closestDistance);
-      this.markerTable.set(location, closestDistance);
-      result += BlockReaderConstants.MARKER_FORMAT;
+      if(offset < 0) throw new Error('String offset is negative, unable to mark');
+      this.markerTable.set(closestLocation, offset);
+      this.markerTable.set(location, offset);
+      return BlockReaderConstants.MARKER_FORMAT;
     } else {
-      result += `+${closestDistance.toString(16).toUpperCase()}`;
+      return `${offset < 0 ? '-' : '+'}${Math.abs(offset).toString(16).toUpperCase()}`;
     }
-
-    return result;
   }
 } 

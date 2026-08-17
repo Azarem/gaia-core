@@ -1,5 +1,5 @@
 import { Op } from '../../types/assembly';
-import { AsmBlock, ChunkFile, ChunkFileUtils, TypedNumber } from '../../types';
+import { AsmBlock, ChunkFile, ChunkFileUtils, RomProcessingConstants, TypedNumber } from '../../types';
 import { 
   AddressType, 
   MemberType,
@@ -14,22 +14,6 @@ import { DbRoot } from '../../database';
 import { BlockReader } from './blocks';
 import { ReferenceManager } from './references';
 import { PostProcessor } from './postprocessor';
-
-// Platform detection that works in both Node.js and web environments
-const isWindows = (() => {
-  // Check if we're in Node.js environment
-  if (typeof process !== 'undefined' && process.platform) {
-    return process.platform === 'win32';
-  }
-  // In web environment, check user agent as fallback
-  // if (typeof navigator !== 'undefined' && navigator.userAgent) {
-  //   return navigator.userAgent.includes('Windows');
-  // }
-  // Default to Unix-style line endings if we can't determine
-  return false;
-})();
-
-const NEWLINE = isWindows ? '\r\n' : '\n';
 
 // Type tags for better object identification
 export enum ObjectType {
@@ -53,6 +37,7 @@ export class BlockWriter {
   private _postProcessor: PostProcessor;
   private _isInline: boolean = false;
   private _currentPart: AsmBlock | null = null;
+  private _currentBlock: ChunkFile | undefined = undefined;
 
   constructor(reader: BlockReader) {
     this._blockReader = reader;
@@ -108,6 +93,7 @@ export class BlockWriter {
 
     const lines: string[] = [];
     this._referenceManager = block.referenceManager!;
+    this._currentBlock = block;
 
     // Write bank information if not movable
     if (block.bank !== undefined) {
@@ -118,7 +104,7 @@ export class BlockWriter {
     const includes = ChunkFileUtils.getIncludes(block);
     if (includes && includes.length > 0) {
       lines.push('');
-      for (const inc of includes) {
+      for (const inc of includes.sort((a, b) => a.name.localeCompare(b.name))) {
         lines.push(`?INCLUDE '${inc.name}'`);
       }
     }
@@ -148,7 +134,7 @@ export class BlockWriter {
       lines.push(...objectLines);
     }
 
-    let content = lines.join(NEWLINE);
+    let content = lines.join(RomProcessingConstants.NEWLINE);
 
     // Apply replace transforms
     if (block.transforms) {
@@ -160,7 +146,7 @@ export class BlockWriter {
       }
     }
 
-    if(!isWindows){
+    if(!RomProcessingConstants.IS_WINDOWS){
       content = content.replace(/\r/g, '');
     }
 
@@ -188,12 +174,12 @@ export class BlockWriter {
       if (op.mode === 'Immediate') {
         return obj;
       }
-      return this._referenceManager.resolveName(obj, AddressType.Address, isBranch);
+      return this._referenceManager.resolveName(obj, AddressType.Address, isBranch, this._currentBlock);
     }
     
     if (this.getObjectType(obj) === ObjectType.LocationWrapper) {
       const lw = obj as LocationWrapper;
-      return this._referenceManager.resolveName(lw.location, lw.type, isBranch);
+      return this._referenceManager.resolveName(lw.location, lw.type, isBranch, this._currentBlock);
     }
     if (this.getObjectType(obj) === ObjectType.Address) {
       const addr = obj as Address;
@@ -314,13 +300,8 @@ export class BlockWriter {
         break;
 
       case ObjectType.LocationWrapper:
-        objLines = [
-          this._referenceManager.resolveName(
-            (obj as LocationWrapper).location,
-            (obj as LocationWrapper).type,
-            isBranch
-          ),
-        ];
+        const lw = obj as LocationWrapper;
+        objLines = [this._referenceManager.resolveName(lw.location, lw.type, isBranch, this._currentBlock)];
         break;
 
       case ObjectType.Address:
@@ -393,7 +374,7 @@ export class BlockWriter {
     this._isInline = true;
     for (const part of structObj.parts) {
       const partLines = this.writeObject(part, depth);
-      parts.push(partLines.join(NEWLINE));
+      parts.push(partLines.join(RomProcessingConstants.NEWLINE));
     }
     const line = `${structObj.name} < ${parts.join(', ')} >`;
     this._isInline = isInline; // match C# spacing behaviour
@@ -510,10 +491,7 @@ export class BlockWriter {
     const refChar = stringObj.type.delimiter;
     let marker = stringObj.marker;
     
-    if (marker <= 0) {
-      const markerResult = this._referenceManager.tryGetMarker(stringObj.location);
-      marker = markerResult.found ? markerResult.offset || 0 : 0;
-    }
+    if (marker <= 0) marker = this._referenceManager.markerTable.get(stringObj.location) ?? 0;
 
     if (marker > 0) {
       let six = 0;
@@ -550,6 +528,8 @@ export class BlockWriter {
           }
           six = eix + 1;
           mix++;
+        } else if(str[six] === '\\') {
+          six += RomProcessingConstants.NEWLINE.length + 1;
         } else {
           six++;
           mix++;
@@ -594,13 +574,12 @@ export class BlockWriter {
     const isInline = this._isInline;
     lines.push('[');
     this._isInline = false; // start elements on their own lines
+    const showIndex = arr.length > 1;
 
     for (let i = 0; i < arr.length; i++) {
       const objLines = this.writeObject(arr[i], depth + 1, false, true);
-      for(const line of objLines) {
-        lines.push(indent + '  ' + line);
-      }
-      lines[lines.length - 1] += `   ;${i.toString(16).toUpperCase().padStart(2, '0')}`;
+      for (const line of objLines) lines.push(indent + '  ' + line);
+      if (showIndex) lines[lines.length - 1] += `   ;${i.toString(16).toUpperCase().padStart(2, '0')}`;
     }
 
     lines.push(indent + ']');

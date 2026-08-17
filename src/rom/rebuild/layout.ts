@@ -24,12 +24,14 @@ export class RomLayout {
   private root: DbRoot;
   private config: DbConfig;
   private sfxPackType: string;
+  public readonly srcFiles: ChunkFile[] = [];
   public readonly sfxFiles: ChunkFile[] = [];
 
   constructor(files: ChunkFile[], root: DbRoot) {
     this.root = root;
     this.config = root.config;
     this.sfxPackType = root.config.sfxPack ?? root.config.sfxType;
+    this.srcFiles = files;
     this.sfxFiles = this.sfxPackType !== 'Individual' ? files.filter(x => x.type.type === 'Sound')
       .sort((a, b) => {
         const aId = parseInt(a.name.substring(a.name.length - 2, a.name.length), 16);
@@ -106,11 +108,12 @@ export class RomLayout {
             page++;
 
             if(offset) {
-              const newFile = new ChunkFile(Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!, file.name + "_2", file.size, file.location);
+              const newFile = new ChunkFile(Object.values(this.root.fileTypes).find(x => x.type === BinType.Binary)!, file.name + "_2", 0, 0);
               const end = file.rawData!.length - offset;
               newFile.rawData = file.rawData!.slice(end);
               newFile.size = newFile.rawData.length;
               this.sfxFiles.unshift(newFile);
+              this.srcFiles.push(newFile);
               file.sizeHeader = file.rawData!.length;
               file.rawData = file.rawData!.slice(0, end);
               file.size -= offset;

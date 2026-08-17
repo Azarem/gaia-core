@@ -184,7 +184,7 @@ describe('BlockReader', () => {
       const dummyMap = new Map<string, number>();
       for (const file of chunkFiles) {
         conditionFiles.push(file.name);
-  
+        
         if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
         else if (file.parts?.length) asmFiles.push(file);
         else if (!file.struct) continue;

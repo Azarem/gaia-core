@@ -116,8 +116,8 @@ export class ChunkFile {
         part.end - part.start,
         false, // isString will be determined during processing
         part.name,
-        part.type || undefined,
-        part.bank
+        part.type || undefined
+        //part.bank
       );
       this.size += asmBlock.size;
       this.parts.push(asmBlock);

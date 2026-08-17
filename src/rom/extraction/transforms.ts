@@ -3,7 +3,7 @@ import { ReferenceManager } from './references';
 import { RomProcessingConstants } from '../../types/constants';
 import type { BlockReader } from './blocks';
 import { Address, AddressType } from '../../types/addressing';
-import { LocationWrapper } from '../..';
+import { indexOfAny, LocationWrapper } from '../..';
 
 /**
  * Handles transform processing for assembly instructions
@@ -59,37 +59,23 @@ export class TransformProcessor {
       return;
     }
 
-    // There is special logic for empty labels
-    const hasBank = transform.startsWith('$');
-    if (transform === '' || hasBank) {
-      this.applyDefaultTransform(operandIndex, operands, hasBank ? parseInt(transform.substring(1), 16) : undefined);
-    } else {
-      operands[operandIndex] = transform; // Otherwise it is a direct replacement
+    let type = AddressType.Offset;
+    let loc : number | undefined;
+
+    if (transform === '' || transform[0] === '$') {
+      const operand = operands[operandIndex] as any;
+      const offset = operand && 'value' in operand ? operand['value'] : operand as number;
+      const bank = transform[0] === '$' 
+        ? parseInt(transform.substring(1), 16) 
+        : Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
+        const adrs = new Address(bank, offset, this._blockReader._root.config.memoryMode, true);
+        loc = adrs.toLocation();
+    } else if(transform.match(/^[*^][A-Fa-f0-9]{6}$/)) {
+      loc = parseInt(transform.substring(1), 16);
+      type = Address.typeFromCode(transform[0]);
     }
-  }
 
-  private applyDefaultTransform(operandIndex: number, operands: unknown[], bank?: number): void {
-    const opnd = operands[operandIndex] as any;
-    const resolvedBank = bank ?? Address.resolveBank(this._romDataReader.position, this._blockReader._root.config.memoryMode);
-    const offset = opnd && 'value' in opnd ? opnd['value'] : opnd as number;
-    const adrs = new Address(resolvedBank, offset, this._blockReader._root.config.memoryMode, true);
-    const loc = adrs.toLocation();
-
-    operands[operandIndex] = new LocationWrapper(loc, AddressType.Offset);
-    return;
-
-    // const nameResult = this._referenceManager.tryGetName(loc);
-    // let referenceName: string;
-    
-    // if (!nameResult.found) {
-    //   referenceName = `loc_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
-    //   this._referenceManager.tryAddName(loc, referenceName);
-    // } else {
-    //   referenceName = nameResult.referenceName!;
-    // }
-    
-    // this._blockReader.resolveInclude(loc, false);
-    // operands[operandIndex] = `&${referenceName}`;
+    operands[operandIndex] = loc !== undefined ? new LocationWrapper(loc, type) : transform;
   }
 
   private cleanTransformName(transform: string): string {

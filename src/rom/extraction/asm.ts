@@ -38,7 +38,7 @@ export class AsmReader {
   public parseAsm(reg: Registers): Op {
     const opStart = this._romDataReader.position;
     const opCode = this._romDataReader.readByte();
-    
+
     // Find matching OpCode in the database
     const code = this._blockReader._root.opCodes[opCode];
     if (!code) {

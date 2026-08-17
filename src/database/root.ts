@@ -133,10 +133,16 @@ export class DbRootUtils {
     for (const [groupName, groupData] of Object.entries(module.blocks)) {
       for(const [blockName, blockData] of Object.entries(groupData)) {
 
-        const partsData = blockData.parts as unknown as Record<string, Partial<DbPart>> ?? {};
-        const parts = Object.entries(partsData).map((p) => {
-          return new DbPart({...p[1], name: p[0]});
-        });
+        let parts: DbPart[] = [];
+
+        if (blockData.parts === undefined) {
+          parts = [new DbPart({...blockData, name: blockName, order: undefined})];
+        } else {
+          const partsData = blockData.parts as unknown as Record<string, Partial<DbPart>> ?? {};
+          parts = Object.entries(partsData).map((p) => {
+            return new DbPart({...p[1], name: p[0]});
+          });
+        }
 
         const transformList = (module.transforms[blockName] ?? []).map((t) => {
           return new DbTransform(t);

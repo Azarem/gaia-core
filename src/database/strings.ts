@@ -11,6 +11,7 @@ export class DbStringCommand {
   public delimiter?: number;
   public halt: boolean;
   public dictionary?: DbStringDictionary;
+  public newline: boolean;
 
   constructor(data: Partial<DbStringCommand>) {
     if(typeof data.id !== 'number') throw new Error('Id is required');
@@ -22,6 +23,7 @@ export class DbStringCommand {
     this.delimiter = data.delimiter ?? undefined;
     this.halt = data.halt ?? false;
     this.dictionary = data.dictionary ?? undefined;
+    this.newline = data.newline ?? false;
   }
 }
 

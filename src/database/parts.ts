@@ -8,7 +8,7 @@ export class DbPart {
   public start: number;
   public end: number;
   public type: string;
-  public bank?: number;
+  //public bank?: number;
   public order?: number;
 
   constructor(data: Partial<DbPart>) {
@@ -21,7 +21,7 @@ export class DbPart {
     this.start = data.start;
     this.end = data.end;
     this.type = data.type;
-    this.bank = data.bank ?? undefined;
+    //this.bank = data.bank ?? undefined;
     this.order = data.order ?? undefined;
   }
 }

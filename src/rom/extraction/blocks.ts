@@ -146,15 +146,28 @@ export class BlockReader {
    * Resolves include for a location
    */
   public resolveInclude(loc: number, isBranch: boolean): void {
-    const [outside, foundBlock, foundPart] = ChunkFileUtils.isOutsideWithPart(this._enrichedChunks, this._currentChunk!, loc);
+    const rewrite = this._currentChunk?.compressed ? undefined : this._root.rewrites[loc];
+    const adjLoc = rewrite ?? loc;
+
+    const [outside, foundBlock, foundPart] = ChunkFileUtils.isOutsideWithPart(this._enrichedChunks, this._currentChunk!, adjLoc);
+    
+    if (foundPart && rewrite) {
+      const name = BlockReaderConstants.POINTER_CHARACTERS.includes(foundPart.structName![0]) ? foundPart.structName!.substring(1) : foundPart.structName!;
+      if (this._root.stringTypes[name]) {
+        this._referenceManager.markerTable.set(loc, loc - rewrite);
+        this._referenceManager.markerTable.set(rewrite, loc - rewrite);
+      }
+    }
+
     if (outside && foundBlock && foundPart) {
       //if(foundBlock.location === loc) return; //Defer to direct file references
+      //if(foundBlock.parts?.length === 1 && foundBlock.location === loc) return;
       this._currentAsmBlock!.includes!.add({block: foundBlock, part: foundPart});
-    } else if (isBranch && !this._referenceManager.tryGetName(loc).found) {
+    } else if (isBranch && !this._referenceManager.tryGetName(adjLoc).found) {
       // const adrs = Address.fromInt(loc, this._root.config.memoryMode);
       // const name = `loc_${adrs.toString()}`;
-      const name = `loc_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
-      this._referenceManager.tryAddName(loc, name);
+      const name = `loc_${adjLoc.toString(16).toUpperCase().padStart(6, '0')}`;
+      this._referenceManager.tryAddName(adjLoc, name);
     }
   }
 
@@ -261,7 +274,7 @@ export class BlockReader {
   private initializeBlocksAndParts(): void {
     console.log('initializeBlocksAndParts');
     for (const block of this._enrichedChunks) {
-      //this._referenceManager.fileTable.set(block.location, block.name);
+      this._referenceManager.fileTable.set(block.location, block.name);
       for (const part of block.parts || []) {
         if(part.structName) {
           this._referenceManager.tryAddStruct(part.location, part.structName);

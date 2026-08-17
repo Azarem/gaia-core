@@ -34,6 +34,23 @@ export class RomProcessingConstants {
   // Trim patterns (for start/end of string)
   public static readonly COMMA_SPACE_TRIM_REGEX = /^[, \t]+|[, \t]+$/g;
 
+  
+  // Platform detection that works in both Node.js and web environments
+  public static readonly IS_WINDOWS = (() => {
+    // Check if we're in Node.js environment
+    if (typeof process !== 'undefined' && process.platform) {
+      return process.platform === 'win32';
+    }
+    // In web environment, check user agent as fallback
+    // if (typeof navigator !== 'undefined' && navigator.userAgent) {
+    //   return navigator.userAgent.includes('Windows');
+    // }
+    // Default to Unix-style line endings if we can't determine
+    return false;
+  })();
+
+  public static readonly NEWLINE = RomProcessingConstants.IS_WINDOWS ? '\r\n' : '\n';
+
   /**
    * Gets the size of an object for processing purposes
    * @param obj The object to get the size for
@@ -109,16 +126,10 @@ export class BlockReaderConstants {
   public static readonly BYTE_DELIMITER_THRESHOLD = 0x100;
   public static readonly BANK_HIGH_MEMORY_1 = 0x7E;
   public static readonly BANK_HIGH_MEMORY_2 = 0x7F;
-  public static readonly POINTER_CHARACTERS = ['&', '@'];
-  public static readonly WIDE_STRING_TYPE = "WideString";
+  public static readonly POINTER_CHARACTERS = ['&', '@', '%', '!'];
   public static readonly BINARY_TYPE = "Binary";
   public static readonly CODE_TYPE = "Code";
   
   // Format strings
-  public static readonly LOCATION_FORMAT = "loc_{0:X6}";
-  public static readonly TYPE_NAME_FORMAT = "{0}_{1:X6}";
-  public static readonly OFFSET_FORMAT = "+{0:X}";
   public static readonly MARKER_FORMAT = "+M";
-  public static readonly NEGATIVE_OFFSET_FORMAT = "-{0:X}";
-  public static readonly NEGATIVE_MARKER_FORMAT = "-M";
 } 
