@@ -30,7 +30,7 @@ export class AsmReader {
 
   constructor(blockReader: BlockReader) {
     this._blockReader = blockReader;
-    this._transformProcessor = new TransformProcessor(blockReader);
+    this._transformProcessor = blockReader._transformProcessor;
     this._addressingModeHandler = new AddressingModeHandler(blockReader, this._transformProcessor);
     this._romDataReader = blockReader._romDataReader;
   }

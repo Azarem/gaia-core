@@ -21,6 +21,7 @@ import type { StringWrapper } from '../../types';
 import type { DbRoot } from '../../database';
 import { ChunkFile, ChunkFileUtils } from '../../types/files';
 import { indexOfAny } from '../../utils';
+import { TransformProcessor } from './transforms';
 
 /**
  * Central class for reading and analyzing ROM blocks
@@ -46,6 +47,7 @@ export class BlockReader {
   public _romDataReader: RomDataReader;
   public readonly _stateManager: ProcessorStateManager;
   public _referenceManager: ReferenceManager;
+  public _transformProcessor: TransformProcessor;
 
   // Current Processing State (Database)
   //public _currentBlock!: DbBlock;
@@ -58,10 +60,11 @@ export class BlockReader {
   public _enrichedChunks: ChunkFile[] = [];
 
   constructor(romData: Uint8Array, root: DbRoot) {
+    this._root = root;
     this._romDataReader = new RomDataReader(romData);
     this._stateManager = new ProcessorStateManager();
     this._referenceManager = new ReferenceManager(root);
-    this._root = root;
+    this._transformProcessor = new TransformProcessor(this);
 
     this._stringReader = new StringReader(this as any);
     this._asmReader = new AsmReader(this as any);

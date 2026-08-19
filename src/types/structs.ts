@@ -5,4 +5,5 @@
 export interface StructDef {
   name: string;
   parts: unknown[];
+  location: number;
 } 

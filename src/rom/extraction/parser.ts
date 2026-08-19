@@ -178,11 +178,15 @@ export class TypeParser {
           const memberCount = types.length;
           const prevPosition = this._romDataReader.position;
           const parts = new Array(memberCount); // Create new member collection
-          const def: StructDef = { name: targetType.name, parts };
+          const def: StructDef = { name: targetType.name, parts, location: prevPosition };
+
+          let partLocation = prevPosition;
 
           // Parse each member of the struct
           for (let i = 0; i < memberCount; i++) {
+            const transform = this._blockReader._transformProcessor.getTransform();
             parts[i] = this.parseType(types[i], reg, depth + 1, bank);
+            this._blockReader._transformProcessor.applyTransform(transform, i, parts);
           }
 
           // Advance (hide) discriminator if it is the last member
@@ -195,7 +199,7 @@ export class TypeParser {
 
           objects.push(def);
         } else {
-          this._romDataReader.position ++;
+          this._romDataReader.position++;
         }
       }
       
@@ -298,7 +302,7 @@ export class TypeParser {
           oddBank += Address.DATA_BANK_FLAG - bankSpan; 
         } else if(isVeryOdd) {
           oddBank |= Address.DATA_BANK_FLAG;
-        } else if(!isVeryOdd) {
+        } else {
           offset |= 0x8000;
         }
 
