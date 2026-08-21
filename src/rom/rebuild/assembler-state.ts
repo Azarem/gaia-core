@@ -52,7 +52,8 @@ export class AssemblerState {
   private checkDisc(): void {
     if (this.discriminator === this.dataOffset && this.discriminatorLogic === "=") {
       const discriminator = this.dbStruct!.discriminator!;
-      if(discriminator > 255 || this.discriminatorSize === 2) {
+      const size = this.dbStruct!.discriminatorSize ?? this.discriminatorSize ?? 1;
+      if(discriminator > 255 || size > 1) {
         this.context.currentBlock!.objList.push(new Word(discriminator));
         this.context.currentBlock!.size += 2;
         this.dataOffset += 2;
@@ -226,6 +227,10 @@ export class AssemblerState {
           if (openTag === '<') {
             this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
             this.checkDisc();
+            if(this.dbStruct?.tail !== undefined) {
+              this.context.currentBlock!.objList.push(new Uint8Array(this.dbStruct.tail));
+              this.context.currentBlock!.size += this.dbStruct.tail;
+            }
           }
           return;
         }

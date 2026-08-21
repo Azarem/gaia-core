@@ -158,18 +158,19 @@ export class TypeParser {
           const disc16 = this._romDataReader.romData[discPosition + 1] << 8 | disc;
 
           // Match discriminator to type
-          const matchedStruct = Object.values(this._blockReader._root.structs).find(
-            x => x.parent === fixedTypeName &&
-                (discLogic === '&' 
-                  ? (((x.discriminator ?? 0) & disc) !== 0) 
-                  : ((x.discriminator?? 0) >= 256 ? x.discriminator === disc16 : x.discriminator === disc))
-          );
+          const matchedStruct = Object.values(this._blockReader._root.structs).find(x => {
+            if (x.parent !== fixedTypeName || x.discriminator === undefined) return false;
+            const size = x.discriminatorSize ?? discSize;
+            const value = size > 1 || x.discriminator > 255 ? disc16 : disc;
+            if(discLogic === '&') return (x.discriminator & value) !== 0;
+            return x.discriminator === value;
+          });
           targetType = matchedStruct || parentType; // Default to parent if no match is found
           
           // Advance position (hide value) if discriminator is first
           if (discOffset === 0 && parentType != targetType && discLogic === '=') {
             this._romDataReader.position++;
-            if(discSize > 1 ||(matchedStruct?.discriminator ?? 0) >= 256) this._romDataReader.position++;
+            if((targetType.discriminatorSize ?? discSize) > 1 || targetType.discriminator! >= 256) this._romDataReader.position++;
           }
         }
 
@@ -192,9 +193,15 @@ export class TypeParser {
           // Advance (hide) discriminator if it is the last member
           if (discOffset !== undefined 
             && discOffset === this._romDataReader.position - prevPosition
+            && targetType.discriminator !== undefined
+            && discLogic === '='
             && types?.length > 0) {
             this._romDataReader.position++;
-            if(discSize > 1) this._romDataReader.position++;
+            if((targetType.discriminatorSize ?? discSize) > 1 || targetType.discriminator >= 256) this._romDataReader.position++;
+          }
+
+          if(targetType.tail !== undefined) {
+            this._romDataReader.position += targetType.tail;
           }
 
           objects.push(def);

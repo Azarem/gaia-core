@@ -11,6 +11,7 @@ export class DbStruct {
   public discriminatorLogic?: string;
   public discriminatorSize?: number;
   public null?: number;
+  public tail?: number;
 
   constructor(data: Partial<DbStruct>) {
     this.name = data.name ?? '';
@@ -21,6 +22,7 @@ export class DbStruct {
     this.discriminatorLogic = data.discriminatorLogic ?? (this.discriminator !== undefined ? "=" : undefined);
     this.discriminatorSize = data.discriminatorSize ?? undefined;
     this.null = data.null ?? undefined;
+    this.tail = data.tail ?? undefined;
     
     if(!this.name) throw new Error('Name is required');
   }
