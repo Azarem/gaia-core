@@ -19,6 +19,7 @@ export interface StringWrapper {
   marker: number;
   location: number;
   fixedSize: number;
+  isRaw: boolean;
 }
 
 /**

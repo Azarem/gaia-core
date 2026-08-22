@@ -1,6 +1,6 @@
 import { ChunkFile } from '../../types/files';
 import { TableEntry } from '../../types';
-import { StructDef, Word } from '../../types';
+import { StructDef, Word, LocationWrapper, AddressType } from '../../types';
 import { BlockReader } from './blocks';
 import { ReferenceManager } from './references';
 import { AsmBlock } from '../../types/assembly';
@@ -59,9 +59,9 @@ export class PostProcessor {
    * Equivalent to PostProcessor.Lookup in C# implementation.
    */
   public Lookup(block: ChunkFile, keyIx: string, valueIx: string, maxId: string): void {
-    const keyIndex = parseInt(keyIx.trim());
-    const valueIndex = parseInt(valueIx.trim());
-    const maxKey = maxId ? parseInt(maxId.trim()) : undefined;
+    const keyIndex = parseInt(keyIx);
+    const valueIndex = parseInt(valueIx);
+    const maxKey = maxId ? parseInt(maxId) : undefined;
 
     if(!block.parts?.length) throw new Error('Invalid block structure for Lookup post process');
 
@@ -170,6 +170,79 @@ export class PostProcessor {
     this._referenceManager.nameTable.set(newBlock.location, newName);
 
     block.parts.push(newBlock);
+  }
+
+  public Extract( block: ChunkFile, valueIndexString: string) {
+    if(!block.parts?.length) throw new Error('Invalid block structure for Extract post process');
+    
+    //const offset = offsetString ? parseInt(offsetString) ?? 0 : 0;
+    const valueIndex = valueIndexString ? parseInt(valueIndexString) ?? 0 : 0;
+
+    for (const part of block.parts) {
+      const tableList = part.objList as TableEntry[];
+      const locationList = tableList[0].object as LocationWrapper[];
+      const objLookup : Record<number, any> = {};
+      let objLocation = tableList[0].location;
+      let valueLocation = tableList.length + objLocation++;
+
+      const newLocationList: LocationWrapper[] = [];
+      const newLocationTable: TableEntry = { location: valueLocation++, object: newLocationList, name: `${part.label}_extract_table` };
+      
+      const newTableList: TableEntry[] = [ newLocationTable ];
+
+      for(let i = 1; i < tableList.length; i++) {
+        const tableEntry = tableList[i];
+        const oldLocation = tableEntry.location;
+
+        const name = this._referenceManager.nameTable.get(oldLocation);
+        if(!name) throw new Error(`Object name not found for location ${oldLocation}`);
+
+        //Get entry object and value
+        const entryObject = (tableEntry.object as any[])[0] as StructDef;
+        const entryValue = entryObject.parts[valueIndex];
+        
+        //Remove value from entry object
+        entryObject.parts.splice(valueIndex, 1);
+
+        if(entryObject.parts.length === 1) tableEntry.object = entryObject.parts[0]!;
+
+        //Generate value name
+        const valueName = `${name}_value`;
+
+        //Generate new value entry
+        const valueTableEntry: TableEntry = { location: valueLocation, object: entryValue, name: valueName };
+
+        //Cretae obj lookup entry
+        objLookup[oldLocation] = { name, objLocation, valueLocation, object: tableEntry, value: valueTableEntry };
+
+        //Add new value entry to new table
+        newTableList.push(valueTableEntry);
+
+        objLocation++;
+        valueLocation++;
+      }
+
+      //Rewrite original table/name locations
+      for(let i = 1; i < tableList.length; i++) {
+        const tableEntry = tableList[i];
+        const lookupObj = objLookup[tableEntry.location];
+        tableEntry.location = lookupObj.objLocation;
+        this._referenceManager.nameTable.set(lookupObj.objLocation, lookupObj.name);
+      }
+
+      //Rewrite original lookup table locations
+      for(const wrapper of locationList) {
+        const lookupObj = objLookup[wrapper.location];
+        wrapper.location = lookupObj.objLocation;
+        newLocationList.push(new LocationWrapper(lookupObj.valueLocation, AddressType.Offset));
+      }
+
+      //Write new table names to name table
+      for(const table of newTableList) this._referenceManager.nameTable.set(table.location, table.name!);
+
+      //Concatenate new table list to original table list
+      tableList.push(...newTableList);
+    }
   }
 
 }

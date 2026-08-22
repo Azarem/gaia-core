@@ -150,12 +150,19 @@ export class RomProcessor {
       for (let ix = 0; patch.parts && ix < patch.parts.length;) {
         const block = patch.parts[ix];
         let match: any = null;
+        let adjust = 0;
         if (block.label) { 
+          let label = block.label;
+          const adjustIx = label.search(/[-+]$/)
+          if(adjustIx > 0) {
+            adjust = label[adjustIx] === '+' ? 1 : -1;
+            label = label.slice(0, adjustIx);
+          }
           for (const i of inc) {
             if (!i.parts) continue;
             for (let y = 0; y < i.parts.length; y++) {
               const check = i.parts[y];
-              if (check.label === block.label) {
+              if (check.label === label) {
                 file = i; 
                 dstIx = y; 
                 match = check;
@@ -165,7 +172,12 @@ export class RomProcessor {
           }
         }
         if (match) {
-          file!.parts![dstIx++] = block;
+          if(adjust !== 0) {
+            if(adjust > 0) dstIx++;
+            file!.parts!.splice(dstIx++, 0, block);
+          } else {
+            file!.parts![dstIx++] = block;
+          }
         } else if (dstIx >= 0) {
           file!.parts!.splice(dstIx++, 0, block);
         } else { ix++; continue; }

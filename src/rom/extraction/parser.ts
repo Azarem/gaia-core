@@ -52,15 +52,18 @@ export class TypeParser {
     }
     
     const isSoft = arrayTypeName[0] === '~';
-    const realTypeName = isSoft ? arrayTypeName.substring(1) : arrayTypeName;
+    let realTypeName = isSoft ? arrayTypeName.substring(1) : arrayTypeName;
     
+    const isRaw = realTypeName[realTypeName.length - 1] === '!';
+    if(isRaw) realTypeName = realTypeName.substring(0, realTypeName.length - 1);
+
     const fixedIx = realTypeName.indexOf('(');
     const fixedSize = fixedIx !== -1 ? parseInt(realTypeName.substring(fixedIx + 1, realTypeName.length - 1), 16) : 0;
     let fixedTypeName = fixedIx !== -1 ? realTypeName.substring(0, fixedIx) : realTypeName;
 
     const stringType = this._stringTypes[fixedTypeName];
     
-    if (stringType) return this._stringReader.parseString(stringType, fixedSize);
+    if (stringType) return this._stringReader.parseString(stringType, fixedSize, isRaw);
 
     // Shortcut for symbolic Offsets
     if (fixedTypeName[0] === '&') {

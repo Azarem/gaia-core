@@ -77,7 +77,7 @@ export class StringReader {
     if(cmd.newline) builder.push(`\\${RomProcessingConstants.NEWLINE}`);
   }
 
-  public parseString(stringType: DbStringType, fixedSize: number): StringWrapper {
+  public parseString(stringType: DbStringType, fixedSize: number, isRaw: boolean): StringWrapper {
     const commands = stringType.commandLookup;
     const dictionaries = stringType.dictionaries;
     const builder: string[] = [];
@@ -168,7 +168,8 @@ export class StringReader {
       type: stringType,
       marker: 0,
       location: strLoc,
-      fixedSize
+      fixedSize,
+      isRaw
     };
   }
 

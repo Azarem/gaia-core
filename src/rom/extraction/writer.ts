@@ -386,15 +386,16 @@ export class BlockWriter {
     lines.push('{');
     const isInline = this._isInline;
     this._isInline = true; // instructions follow immediately
-    
+
     let first = true;
     for (const op of opList) {
       if (!first || depth > 0) {
         // Check for labels on subsequent instructions
-        const labelResult = this._referenceManager.tryGetName(op.location);
-        if (labelResult.found) {
+        let label = this._referenceManager.tryGetName(op.location)?.referenceName;
+        if (!label && first && depth > 0) label = `code_${op.location.toString(16).toUpperCase().padStart(6, '0')}`;
+        if(label) {
           lines.push('');
-          lines.push(`  ${labelResult.referenceName}:`);
+          lines.push(`  ${label}:`);
         }
       }
 
@@ -565,7 +566,7 @@ export class BlockWriter {
 
     const sizeParam = stringObj.fixedSize ? `(${stringObj.fixedSize})` : '';
 
-    return [`${refChar}${str}${refChar}${sizeParam}`];
+    return [`${refChar}${str}${refChar}${sizeParam}${stringObj.isRaw ? '!' : ''}`];
   }
 
   private writeArray(arr: any[], depth: number): string[] {

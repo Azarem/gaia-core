@@ -26,6 +26,7 @@ export class StringProcessor {
   public consumeString(typeChar: string): void {
     let str: string | null = null;
     let fixedStr: number = 0;
+    let isRaw = false;
 
     // Get character code of string type
     //const typeChar = this.context.lineBuffer[0];
@@ -36,16 +37,19 @@ export class StringProcessor {
       // Take the line up until the type code
       str = this.context.lineBuffer.substring(1, endIx);
       // Line takes content after and code
-      this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1)
-        .replace(/^[\s,\t]+/, '');
-      if(this.context.lineBuffer.startsWith('(')) {
+      this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1).replace(/^[\s,\t]+/, '');
+      
+      if(this.context.lineBuffer[0] === '(') {
         const endIx = this.context.lineBuffer.indexOf(')');
         if(endIx >= 0) {
           fixedStr = parseInt(this.context.lineBuffer.substring(1, endIx), 10);
-          this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1)
-            .replace(/^[\s,\t]+/, '');
+          this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1).replace(/^[\s,\t]+/, '');
         }
       }
+      
+      isRaw = this.context.lineBuffer[0] === '!';
+      if(isRaw) this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
+
     } else {
       // Take the remaining line
       str = this.context.lineBuffer.substring(1);
@@ -57,7 +61,7 @@ export class StringProcessor {
     this.totalSize = 0;
     this.fixedStr = fixedStr;
 
-    this.processString(str!, typeChar);
+    this.processString(str!, typeChar, isRaw);
   }
 
   private flushBuffer(stringType: DbStringType, wrap: boolean = false): void {
@@ -79,9 +83,9 @@ export class StringProcessor {
     }
   }
 
-  private processString(str: string, typeChar: string): void {
+  private processString(str: string, typeChar: string, isRaw: boolean): void {
     const stringType = this.stringCharLookup[typeChar];
-    const dictionary = stringType.dictionaryLookup;
+    const dictionaries = stringType.dictionaryLookup;
     const cmdLookup = stringType.commands;
     let currentLayer = stringType.layers[0];
 
@@ -90,16 +94,18 @@ export class StringProcessor {
     let lastCmd: DbStringCommand | null = null;
 
     let fullMatch = false;
-    for(const entry of dictionary) {
-      let index : number;
-      while((index = str.indexOf(entry.text)) >= 0) {
-        if(index === 0 && str.length === entry.text.length) {
-          fullMatch = true;
-          break;
+    if (!isRaw) {
+      for(const dictionary of dictionaries) {
+        let index : number;
+        while((index = str.indexOf(dictionary.text)) >= 0) {
+          if(index === 0 && str.length === dictionary.text.length) {
+            fullMatch = true;
+            break;
+          }
+          str = str.substring(0, index) + `[${(dictionary.id).toString(16).toUpperCase()}]` + str.substring(index + dictionary.text.length);
         }
-        str = str.substring(0, index) + `[${(entry.id).toString(16).toUpperCase()}]` + str.substring(index + entry.text.length);
+        if(fullMatch) break;
       }
-      if(fullMatch) break;
     }
 
 
