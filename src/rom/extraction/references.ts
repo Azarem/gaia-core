@@ -1,5 +1,5 @@
 import { AddressType, Address } from '../../types';
-import { BlockReaderConstants } from '../../types/constants';
+import { BlockReaderConstants, RomProcessingConstants } from '../../types/constants';
 import type { DbRoot } from '../../database';
 import { ChunkFileUtils } from '../../types/files';
 import type { ChunkFile } from '../../types/files';
@@ -23,18 +23,11 @@ export class ReferenceManager {
   }
 
   // Struct management
-  public tryGetStruct(location: number): { found: boolean; chunkType?: string, isSoft?: boolean } {
+  public tryGetStruct(location: number): { found: boolean; chunkType?: string, rawType?: string, isSoft?: boolean, isRaw?: boolean } {
     let chunkType = this.structTable.get(location);
-    const found = chunkType !== undefined;
-    let isSoft : boolean | undefined;
-    if(chunkType) {
-      if(chunkType[0] === '~') {
-        isSoft = true;
-        chunkType = chunkType.substring(1);
-      }
-      else isSoft = false;
-    }
-    return { found, chunkType, isSoft };
+    if(!chunkType) return { found: false };
+    const { name, isSoft, isRaw } = RomProcessingConstants.stripMarkers(chunkType);
+    return { found: true, chunkType: name, rawType: chunkType, isSoft, isRaw };
   }
 
   public tryAddStruct(location: number, chunkType: string): boolean {
@@ -98,8 +91,10 @@ export class ReferenceManager {
 
   public createTypeName(type: string, location: number): string {
     let name = type.toLowerCase();
-    const isSoft = type[0] === '~';
+    const isSoft = name[0] === '~';
     if(isSoft) name = name.substring(1);
+    const isRaw = name[name.length - 1] === '!';
+    if(isRaw) name = name.substring(0, name.length - 1);
 
     if (name === "branch") name = 'loc';
     
@@ -240,7 +235,10 @@ export class ReferenceManager {
         if (structDistance === 1) break;
       }
 
-      if (structName) structType = { found: true, chunkType: structName, isSoft: false };
+      if (structName) {
+        const { name, isSoft, isRaw } = RomProcessingConstants.stripMarkers(structName);
+        structType = { found: true, chunkType: name, isSoft, isRaw };
+      }
     }
 
     const isString = structType.found && this.root.stringTypes[structType.chunkType!];

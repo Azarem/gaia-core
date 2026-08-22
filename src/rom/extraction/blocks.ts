@@ -179,6 +179,7 @@ export class BlockReader {
    */
   public noteType(loc: number, type: string, silent: boolean = false, reg?: Registers): string {
     const isSoft = type[0] === '~';
+    //const isRaw = type[type.length - 1] === '!';
     this._referenceManager.tryAddStruct(loc, type);
     //if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, type);
 
@@ -187,7 +188,7 @@ export class BlockReader {
     
     if (!nameResult.found) {
       name = this._referenceManager.createTypeName(type, loc);
-      this._referenceManager.tryAddName(loc, isSoft ? "~" + name : name);
+      this._referenceManager.tryAddName(loc, `${isSoft ? "~" : ""}${name}`);
     } else {
       name = nameResult.referenceName!;
     }
@@ -298,7 +299,8 @@ export class BlockReader {
     this._romDataReader.position = part.location;
     this._partEnd = part.location + part.size;
 
-    let current = part.structName || BlockReaderConstants.BINARY_TYPE;
+    let currentStruct = RomProcessingConstants.stripMarkers(part.structName || BlockReaderConstants.BINARY_TYPE);
+
     const chunks: TableEntry[] = [];
     const reg = new Registers(this._root.config.memoryMode); //platform.createRegisters()
     const bank : number | undefined = undefined;
@@ -309,19 +311,20 @@ export class BlockReader {
   
       const structResult = this._referenceManager.tryGetStruct(this._romDataReader.position);
       if (structResult.found) {
-        current = structResult.isSoft ? "~" + structResult.chunkType! : structResult.chunkType!;
-      } else if (last !== null && !this._root.stringTypes[current]) {
-        this.processContinuousEntry(current, reg, bank, last);
+        currentStruct = { raw: structResult.rawType!, name: structResult.chunkType!, isSoft: structResult.isSoft!, isRaw: structResult.isRaw! };
+        //current = structResult.isSoft ? "~" + structResult.chunkType! : structResult.chunkType!;
+      } else if (last !== null && !this._root.stringTypes[currentStruct.name]) {
+        this.processContinuousEntry(currentStruct.raw, reg, bank, last);
         continue;
       }
 
       if(!this._referenceManager.nameTable.has(this._romDataReader.position)) {
-        const name = this._referenceManager.createTypeName(current, this._romDataReader.position);
+        const name = this._referenceManager.createTypeName(currentStruct.name, this._romDataReader.position);
         this._referenceManager.nameTable.set(this._romDataReader.position, name);
       }
       last = new TableEntry(this._romDataReader.position);
       chunks.push(last);
-      this.processNewEntry(current, reg, bank, last);
+      this.processNewEntry(currentStruct.raw, reg, bank, last);
     }
 
     part.objList = chunks;

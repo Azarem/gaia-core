@@ -51,6 +51,24 @@ export class RomProcessingConstants {
 
   public static readonly NEWLINE = RomProcessingConstants.IS_WINDOWS ? '\r\n' : '\n';
 
+  public static stripMarkers(name: string): { raw: string, name: string, isSoft: boolean, isRaw: boolean } {
+    let isSoft = false;
+    let isRaw = false;
+    let stripped = name;
+
+    if(stripped[0] === '~') {
+      isSoft = true;
+      stripped = stripped.substring(1);
+    }
+    
+    if(stripped[stripped.length - 1] === '!') {
+      isRaw = true;
+      stripped = stripped.substring(0, stripped.length - 1);
+    }
+
+    return { raw: name, name: stripped, isSoft, isRaw };
+  }
+
   /**
    * Gets the size of an object for processing purposes
    * @param obj The object to get the size for
