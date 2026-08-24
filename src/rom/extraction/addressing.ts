@@ -91,11 +91,11 @@ export class AddressingModeHandler {
         break;
 
       case 'PCRelative':
-        this.handlePCRelativeMode(operands, context.nextAddress, reg, false);
+        this.handlePCRelativeMode(code.mnem, operands, context.nextAddress, reg, false);
         break;
 
       case 'PCRelativeLong':
-        this.handlePCRelativeMode(operands, context.nextAddress, reg, true);
+        this.handlePCRelativeMode(code.mnem, operands, context.nextAddress, reg, true);
         break;
 
       case 'StackRelative':
@@ -195,7 +195,7 @@ export class AddressingModeHandler {
     operands.push(new Byte(this._dataReader.readByte()));
   }
 
-  private handlePCRelativeMode(operands: unknown[], nextAddress: number, reg: Registers, isLong: boolean): void {
+  private handlePCRelativeMode(mnemonic: string, operands: unknown[], nextAddress: number, reg: Registers, isLong: boolean): void {
     const relative = isLong
       ? nextAddress + this._dataReader.readShort()
       : nextAddress + this._dataReader.readSByte();
@@ -203,6 +203,10 @@ export class AddressingModeHandler {
     //this._blockReader.noteType(relative, 'Code', false, reg);
     this._blockReader._referenceManager.tryAddStruct(relative, "~Branch");
     this._blockReader.updateRegisterState(relative, reg);
+
+    //Add branch suggestion to immediately following instruction
+    if(mnemonic === 'BRA' || mnemonic === 'BRL') this._blockReader.noteType(nextAddress, "~Branch", true, reg);
+
     operands.push(new LocationWrapper(relative, isLong ? AddressType.WRelative : AddressType.Relative));
   }
 

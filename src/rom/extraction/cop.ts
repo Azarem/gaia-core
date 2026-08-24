@@ -97,6 +97,10 @@ export class CopCommandProcessor {
       // }
 
     }
+
+    if(copDef.halt) {
+      this._blockReader.noteType(this._romDataReader.position, "~Branch", true, reg);
+    }
   }
 
   private tryParseMemberType(memberTypeName: string): MemberType | null {

@@ -178,17 +178,18 @@ export class BlockReader {
    * Notes a type at a location and manages chunk references
    */
   public noteType(loc: number, type: string, silent: boolean = false, reg?: Registers): string {
-    const isSoft = type[0] === '~';
+    const typeName = RomProcessingConstants.stripMarkers(type);
+    //const isSoft = type[0] === '~';
     //const isRaw = type[type.length - 1] === '!';
-    this._referenceManager.tryAddStruct(loc, type);
+    if(!this._referenceManager.tryAddStruct(loc, type) && typeName.name === 'Branch') return this._referenceManager.tryGetName(loc).referenceName ?? '';
     //if(!oldStruct || oldStruct === 'Branch') this._referenceManager.structTable.set(loc, type);
 
     const nameResult = this._referenceManager.tryGetName(loc);
     let name: string;
     
-    if (!nameResult.found) {
+    if (!nameResult.found || nameResult.isSoft) {
       name = this._referenceManager.createTypeName(type, loc);
-      this._referenceManager.tryAddName(loc, `${isSoft ? "~" : ""}${name}`);
+      this._referenceManager.tryAddName(loc, `${typeName.isSoft ? "~" : ""}${name}`);
     } else {
       name = nameResult.referenceName!;
     }
