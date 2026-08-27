@@ -344,13 +344,11 @@ export class AssemblerState {
         // No operand instructions
         if (!operand) {
           const opCode = codes.find(x => this.root.addrLookup[x.mode].size === 1);
-          this.context.currentBlock!.objList.push(new Op (opCode!, 0, [], 1));
+          if (!opCode) throw new Error(`Unknown instruction line ${this.context.lineCount}: '${mnemonic}'`);
+          this.context.currentBlock!.objList.push(new Op (opCode, 0, [], 1));
           this.context.currentBlock!.size++;
           continue;
         }
-
-        // Do maths before regex processing
-        operand = AssemblerState.doMath(operand);
 
         // COP processing
         let opCode: OpCode | null = codes[0];
@@ -358,10 +356,10 @@ export class AssemblerState {
           const parts = operand.split(/[\s\t,()[\]$#]/).filter(p => p.length > 0);
           const cmd = parts[0];
 
-          const cop = this.root.copLookup[cmd];
-          if (!cop) {
-            throw new Error(`Unknown COP command ${cmd}`);
-          }
+          let cop = this.root.copLookup[cmd];
+          if (!cop && cmd.match(/^[a-fA-F0-9]{2}$/)) cop = this.root.copDef[parseInt(cmd, 16)];
+
+          if(!cop) throw new Error(`Unknown COP command ${cmd}`);
 
           let size = 2;
           const operands : any[] = [ new Byte(cop.id) ];
@@ -401,6 +399,13 @@ export class AssemblerState {
           this.context.currentBlock!.size += size;
           continue;
         }
+
+        const flatOperand = operand.split(/[\s\t,()[\]#$+-]/).filter(p => p.length > 0)[0];
+
+        let mnemonicStr = this.context.tags[flatOperand] ?? this.root.mnemonicsLookup[flatOperand];
+        if (mnemonicStr) operand = operand.replace(flatOperand, mnemonicStr);
+        
+        operand = AssemblerState.doMath(operand);
 
         opCode = null;
         for (const code of codes) {

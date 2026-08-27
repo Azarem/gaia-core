@@ -188,7 +188,7 @@ describe('BlockReader', () => {
         if (file.type.isPatch) { patches.push(file); asmFiles.push(file);} 
         else if (file.parts?.length) asmFiles.push(file);
         else if (!file.struct) continue;
-        
+
         const assembler = new Assembler(reader._root, file.textData!, conditionFiles);
         const { blocks, includes, reqBank } = assembler.parseAssembly();
         file.parts = blocks;
@@ -328,7 +328,7 @@ describe('BlockReader', () => {
       expect(title).toEqual(new Uint8Array(Buffer.from('ILLUSION OF GAIA USA ')));
 
       const checksum = romWriter.outBuffer!.subarray(0xFFDC, 0xFFDC + 2);
-      expect(checksum).toEqual(new Uint8Array([189, 151]));
+      expect(checksum).toEqual(new Uint8Array([119, 134]));
 
       //const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42

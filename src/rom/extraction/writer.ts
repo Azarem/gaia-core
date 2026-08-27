@@ -115,7 +115,7 @@ export class BlockWriter {
       lines.push('');
       for (const [name, address] of mnemonics) {
         const paddedName = name.padEnd(30, ' ');
-        lines.push(`!${paddedName} ${address.toString(16).toUpperCase().padStart(4, '0')}`);
+        lines.push(`!${paddedName} ${address}`); // ${address.toString(16).toUpperCase().padStart(4, '0')}`);
       }
     }
 
@@ -153,14 +153,14 @@ export class BlockWriter {
     return content;
   };
 
-  private getMnemonicsForBlock(block: ChunkFile): [string, number][] {
+  private getMnemonicsForBlock(block: ChunkFile): [string, string][] {
     if (!block.mnemonics) {
       return [];
     }
 
     return Object.entries(block.mnemonics)
-      .map(([k, v]) => [v, parseInt(k, 10)] as [string, number])
-      .sort((a, b) => a[1] - b[1]);
+      //.map(([k, v]) => [v, parseInt(k, 10)] as [string, number])
+      .sort((a, b) => a[1].localeCompare(b[1]));
   }
 
   private resolveOperand(op: Op, obj: any, isBranch: boolean = false): any {
@@ -183,20 +183,15 @@ export class BlockWriter {
     }
     if (this.getObjectType(obj) === ObjectType.Address) {
       const addr = obj as Address;
+      const isWram = addr.isWram;
 
-      if (addr.isCodeBank && addr.offset < Address.UPPER_BANK) {
-        const label = this._root.mnemonics[addr.offset];
-        if (label) {
-          if(op.size === 4) return addr.bank.toString(16).toUpperCase().padStart(2, '0') + label;
-          return label;
-        }
+      if (isWram || (addr.isCodeBank && addr.offset < Address.UPPER_BANK)) {
+        const offset = isWram ? addr.toInt() : addr.offset;
+        const label = this._root.mnemonics[offset];
+        if (label) return (isWram && addr.isShort) ? `S_${label}` : (!isWram && !addr.isShort) ? `L_${label}` : label;
       }
       
-      if (op.size === 4) {
-        return addr;
-      }
-
-      return addr.offset;
+      return addr.isShort ? addr.offset : addr.toString();
     }
 
     // Preserve tag information on typed numbers without resolving names

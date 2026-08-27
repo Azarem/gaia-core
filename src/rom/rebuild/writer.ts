@@ -469,7 +469,10 @@ export class RomWriter {
                     currentObj = new Long(parseInt(label, 16));
                     continue;
                   default:
-                    throw new Error(`Invalid operand '${label}'`);
+                    throw new Error(
+                      `Invalid operand '${label}'` +
+                      (parentOp ? ` (${parentOp.mnem} ${parentOp.mode})` : '')
+                    );
                 }
               }
             }

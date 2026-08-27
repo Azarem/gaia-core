@@ -26,7 +26,7 @@ export class ChunkFile {
   textData?: string;
   transforms?: { key: string; value: string }[];
   postProcess?: string;
-  mnemonics: Record<number, string>;
+  mnemonics: Record<string, string>;
   group?: string;
   scene?: string;
   base?: number;

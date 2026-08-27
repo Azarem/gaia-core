@@ -39,6 +39,7 @@ export interface DbRoot {
   copDef: Record<number, CopDef>;
   copLookup: Record<string, CopDef>;
   mnemonics: Record<number, string>;
+  mnemonicsLookup: Record<string, string>;
   //paths: Record<BinType, DbPath>;
   structs: Record<string, DbStruct>;
   stringTypes: Record<string, DbStringType>;
@@ -278,6 +279,11 @@ export class DbRootUtils {
     const root: DbRoot = {
       headers: module.headers.map((h) => new DbHeader(h)),
       mnemonics: module.mnemonics,
+      mnemonicsLookup: Object.entries(module.mnemonics).reduce((acc, x) => {
+        const value = parseInt(x[0])
+        acc[x[1]] = value.toString(16).toUpperCase().padStart(value <= 0xFF ? 2 : value <= 0xFFFF ? 4 : 6, '0');
+        return acc;
+      }, {} as Record<string, string>),
       overrides: module.overrides,
       rewrites: module.rewrites,
       labels: module.labels,

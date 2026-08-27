@@ -28,7 +28,7 @@ export class Assembler {
   public lineBuffer: string = '';
   public includes = new Set<string>();
   public blocks: AsmBlock[] = [];
-  public tags = new SortedMap<string | null>();
+  public tags : Record<string, string> = {};
   public currentBlock: AsmBlock | null = null;
   public lineCount: number = 0;
   //public blockIndex: number = 0;
@@ -94,6 +94,12 @@ export class Assembler {
 
       this.lineCount++;
 
+      // Process hard line continuations (before comments)
+      if (this.lineBuffer.endsWith('\\')) {
+        this.lineBuffer = this.lineBuffer.slice(0, -1);
+        continue;
+      }
+
       // Ignore comments
       this.trimComments('--');
       this.trimComments(';');
@@ -104,12 +110,6 @@ export class Assembler {
 
       // This can happen
       if (this.lineBuffer.length === 0) {
-        continue;
-      }
-
-      // Process hard line continuations
-      if (this.lineBuffer.endsWith('\\')) {
-        this.lineBuffer = this.lineBuffer.slice(0, -1);
         continue;
       }
 
@@ -132,7 +132,7 @@ export class Assembler {
         continue;
       }
 
-      this.resolveTags();
+      //this.resolveTags();
 
       return true;
     }
@@ -241,25 +241,26 @@ export class Assembler {
         } else {
           this.lineBuffer = ''; // No more pairs, clear buffer
         }
+        
+        // Assign name/value pair to tags
+        this.tags[name] = value;
+
       } else {
         this.lineBuffer = ''; // Take all as name, clear buffer
       }
-
-      // Assign name/value pair to tags
-      this.tags.set(name, value);
     }
   }
 
-  private resolveTags(): void {
-    // Tags are sorted by length descending so longer tags are replaced first (avoids minor conflicts)
-    for (const [key, value] of this.tags) {
-      let ix: number;
-      while ((ix = this.lineBuffer.toLowerCase().indexOf(key.toLowerCase())) >= 0) {
-        this.lineBuffer = this.lineBuffer.substring(0, ix) + (value || '') + 
-                          this.lineBuffer.substring(ix + key.length);
-      }
-    }
-  }
+  // private resolveTags(): void {
+  //   // Tags are sorted by length descending so longer tags are replaced first (avoids minor conflicts)
+  //   for (const [key, value] of this.tags) {
+  //     let ix: number;
+  //     while ((ix = this.lineBuffer.toLowerCase().indexOf(key.toLowerCase())) >= 0) {
+  //       this.lineBuffer = this.lineBuffer.substring(0, ix) + (value || '') + 
+  //                         this.lineBuffer.substring(ix + key.length);
+  //     }
+  //   }
+  // }
 
   public parseOperand(opnd: string): unknown {
     if (!opnd) return null;

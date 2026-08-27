@@ -71,6 +71,10 @@ export class Address {
     return false;
   }
 
+  public get isWram(): boolean {
+    return this.bank === 0x7E || this.bank === 0x7F;
+  }
+
   public get isCodeBank(): boolean {
     return (this.bank & Address.DATA_BANK_FLAG) === 0;
   }

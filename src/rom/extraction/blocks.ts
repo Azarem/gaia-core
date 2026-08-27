@@ -112,30 +112,33 @@ export class BlockReader {
    * Resolves mnemonic for a given address
    */
   public resolveMnemonic(addr: Address): void {
-    // If the address is in high memory (ROM only), skip processing
-    if ((addr.bank & Address.DATA_BANK_FLAG) !== 0) {
-      return;
-    }
+    let offset = 0;
+    const isWram = addr.bank === 0x7E || addr.bank === 0x7F;
 
-    let offset = addr.offset;
-    
-    const label = this._root.mnemonics[offset];
-    if (!label) {
-      return;
+    if (isWram) {
+      if (!addr.isShort) return;
+      offset = addr.toInt();
     }
+    else if (!addr.isCodeBank || addr.offset >= 0x8000) return;
+    else if (addr.isShort) return;
+    else offset = addr.offset;
+    
+    let label = this._root.mnemonics[offset];
+    if (!label) return;
 
     const ix = indexOfAny(label, RomProcessingConstants.OPERATORS);
     if (ix >= 0) {
       let opnd = parseInt(label.substring(ix + 1), 16);
-      const op = label[ix];
-      if(op === '-')
+      if(label[ix] === '-')
         opnd = -opnd;
       
       offset -= opnd;
+
+      label = label.substring(0, ix);
     }
 
-    // Add to current block's mnemonics
-    this._currentChunk!.mnemonics[offset] = label.substring(0, ix >= 0 ? ix : label.length);
+    if (isWram) this._currentChunk!.mnemonics[`S_${label}`] = (offset & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    else this._currentChunk!.mnemonics[`L_${label}`] = (addr.bank << 16 | offset).toString(16).toUpperCase().padStart(6, '0');
   }
 
   /**
