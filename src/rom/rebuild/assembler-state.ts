@@ -36,7 +36,7 @@ export class AssemblerState {
         ) || null;
 
     this.discriminator = this.parentStruct?.discriminator ?? null;
-    this.discriminatorLogic = this.parentStruct?.discriminatorLogic ?? "=";
+    this.discriminatorLogic = this.dbStruct?.discriminatorLogic ?? this.parentStruct?.discriminatorLogic ?? "=";
     this.discriminatorSize = this.parentStruct?.discriminatorSize ?? 1;
     this.delimiter = this.dbStruct?.delimiter ?? null;
     this.memberOffset = 0;

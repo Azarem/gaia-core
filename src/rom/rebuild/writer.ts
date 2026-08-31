@@ -485,9 +485,12 @@ export class RomWriter {
 
             if (isRelative) {
               loc -= block.location + opos;
-              if (type === AddressType.Unknown && !(loc < 0x80 || loc >= 0x3FFF80)) {
-                throw new Error('Relative out of range');
+              if(type === AddressType.WRelative && Math.abs(loc) > 0x7FFF || type === AddressType.Relative && (loc < -0x80 || loc > 0x7F)) {
+                throw new Error(`Relative out of range in ${block.label}: ${parentOp?.mnem} '${label}' (${loc})`);
               }
+              // if (type === AddressType.Unknown && !(loc < 0x80 || loc >= 0x3FFF80)) {
+              //   throw new Error('Relative out of range');
+              // }
             }
 
             if (offset !== null) {

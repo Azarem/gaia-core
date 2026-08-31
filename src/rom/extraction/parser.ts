@@ -133,7 +133,7 @@ export class TypeParser {
 
     const delimiter = parentType.delimiter;
     const discOffset = parentType.discriminator;
-    const discLogic = parentType.discriminatorLogic;
+    const discLogic = parentType.discriminatorLogic ?? '=';
     const discSize = parentType.discriminatorSize ?? 1;
     const nullValue = parentType.null;
 
@@ -165,13 +165,16 @@ export class TypeParser {
             if (x.parent !== fixedTypeName || x.discriminator === undefined) return false;
             const size = x.discriminatorSize ?? discSize;
             const value = size > 1 || x.discriminator > 255 ? disc16 : disc;
-            if(discLogic === '&') return (x.discriminator & value) !== 0;
+            const logic = x.discriminatorLogic ?? discLogic;
+            if(logic === '&') return (x.discriminator & value) !== 0;
             return x.discriminator === value;
           });
           targetType = matchedStruct || parentType; // Default to parent if no match is found
           
+          const logic = targetType.discriminatorLogic ?? discLogic;
+
           // Advance position (hide value) if discriminator is first
-          if (discOffset === 0 && parentType != targetType && discLogic === '=') {
+          if (discOffset === 0 && parentType != targetType && logic === '=') {
             this._romDataReader.position++;
             if((targetType.discriminatorSize ?? discSize) > 1 || targetType.discriminator! >= 256) this._romDataReader.position++;
           }

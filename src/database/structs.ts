@@ -19,7 +19,7 @@ export class DbStruct {
     this.parent = data.parent ?? undefined;
     this.delimiter = data.delimiter ?? undefined;
     this.discriminator = data.discriminator ?? undefined;
-    this.discriminatorLogic = data.discriminatorLogic ?? (this.discriminator !== undefined ? "=" : undefined);
+    this.discriminatorLogic = data.discriminatorLogic ?? undefined;
     this.discriminatorSize = data.discriminatorSize ?? undefined;
     this.null = data.null ?? undefined;
     this.tail = data.tail ?? undefined;
