@@ -111,6 +111,8 @@ export class AssemblerState {
         let endIx = operand.substring(ix + 1).search(RomProcessingConstants.SYMBOL_SPACE_REGEX);
         if(endIx < 0) {
           endIx = operand.length;
+        } else {
+          endIx += ix + 1;
         }
         
         const number = parseInt(operand.substring(ix + 1, endIx), 16);
@@ -400,11 +402,14 @@ export class AssemblerState {
           continue;
         }
 
-        const flatOperand = operand.split(/[\s\t,()[\]#$+-]/).filter(p => p.length > 0)[0];
+        const operandParts = operand.split(/[\s\t,()[\]#$&+-]/).filter(p => p.length > 0);
 
-        let mnemonicStr = this.context.tags[flatOperand] ?? this.root.mnemonicsLookup[flatOperand];
-        if (mnemonicStr) operand = operand.replace(flatOperand, mnemonicStr);
-        
+        for(let i = 0; i < operandParts.length; i++) {
+          const part = operandParts[i];
+          let mnemonicStr = this.context.tags[part] ?? this.root.mnemonicsLookup[part];
+          if (mnemonicStr) operand = operand.replace(part, mnemonicStr);
+        }
+
         operand = AssemblerState.doMath(operand);
 
         opCode = null;

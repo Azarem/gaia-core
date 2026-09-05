@@ -75,7 +75,6 @@ export class BlockReader {
    * Processes predefined overrides for registers and bank notes
    */
   private initializeOverrides(): void {
-    if(!this._root.overrides) return;
     for (const [location, overrides] of Object.entries(this._root.overrides)) {
       for (const [register, value] of Object.entries(overrides)) {
         switch (register) {
@@ -96,6 +95,9 @@ export class BlockReader {
             break;
         }
       }
+    }
+    for (const [location, value] of Object.entries(this._root.names)) {
+      this._referenceManager.tryAddName(parseInt(location), value);
     }
   }
 

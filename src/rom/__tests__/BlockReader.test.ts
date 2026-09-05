@@ -328,7 +328,7 @@ describe('BlockReader', () => {
       expect(title).toEqual(new Uint8Array(Buffer.from('ILLUSION OF GAIA USA ')));
 
       const checksum = romWriter.outBuffer!.subarray(0xFFDC, 0xFFDC + 2);
-      expect(checksum).toEqual(new Uint8Array([119, 134]));
+      expect(checksum).toEqual(new Uint8Array([181, 61]));
 
       //const crc = crc32_buffer(romWriter.outBuffer!);
       //1.42

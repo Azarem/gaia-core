@@ -64,6 +64,7 @@ export interface DbRoot {
   scenes: Record<number, DbScene>;
   fileTypes: Record<string, DbFileType>;
   fileExtLookup: Record<string, DbFileType>;
+  names: Record<number, string>;
 }
 
 /**
@@ -287,6 +288,7 @@ export class DbRootUtils {
       overrides: module.overrides,
       rewrites: module.rewrites,
       labels: module.labels,
+      names: module.names,
       structs: structLookup,
       blocks: blocksArray.sort((a, b) => {
         const orderA = a.order ?? 0;
