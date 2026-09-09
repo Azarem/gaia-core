@@ -356,10 +356,11 @@ export class BlockWriter {
 
     let first = true;
     for (const t of tGroup) {
-      const nameResult = this._referenceManager.tryGetName(t.location);
-      //const adrs = Address.fromInt(t.location, this._blockReader._root.config.memoryMode);
-      //const name = nameResult.found ? nameResult.referenceName! : `loc_${adrs.toString()}`;
-      const name = nameResult.found ? nameResult.referenceName! : `loc_${t.location.toString(16).toUpperCase().padStart(6, '0')}`;
+      let name : string | undefined;
+
+      if (t.location === this._currentPart?.location) name = this._currentPart.label;
+      if (!name) name = this._referenceManager.tryGetName(t.location).referenceName;
+      if (!name) name = `loc_${t.location.toString(16).toUpperCase().padStart(6, '0')}`;
       
       const objectLines = this.writeObject(t.object, depth + 1);
 

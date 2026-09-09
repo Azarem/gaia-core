@@ -61,6 +61,7 @@ export interface DbRoot {
   comments: Record<number, string>;
   blockNotes: Record<string, string>;
   partNotes: Record<string, string>;
+  types: Record<number, string>;
 }
 
 /**
@@ -111,6 +112,8 @@ export class DbRootUtils {
 
   public static fromGameModule(module: DbGameRomModule): DbRoot {
     // Build lookup tables
+    const nameLookup = module.names ?? {};
+    const typeLookup = module.types ?? {};
 
     const opCodes = {} as Record<number, OpCode>;
     const opLookup = {} as Record<string, OpCode[]>;
@@ -132,12 +135,16 @@ export class DbRootUtils {
       for(const [blockName, blockData] of Object.entries(groupData)) {
 
         let parts: DbPart[] = [];
+        let partsData: any = blockData.parts as any;
 
-        if (blockData.parts === undefined) {
-          parts = [new DbPart({...blockData, name: blockName, order: undefined})];
-        } else {
-          const partsData = blockData.parts as unknown as Record<string, Partial<DbPart>> ?? {};
-          parts = Object.entries(partsData).map((p) => {
+        if (partsData === undefined || partsData === null) {
+          parts = [new DbPart({...blockData, order: undefined})];
+        } else if (partsData instanceof Array) {
+          parts = (partsData as number[][]).map((p) => {
+            return new DbPart({ start: p[0], end: p[1] });
+          });
+        } else if (partsData instanceof Object) {
+          parts = Object.entries(partsData as Record<string, Partial<DbPart>>).map((p) => {
             return new DbPart({...p[1], name: p[0]});
           });
         }
@@ -284,7 +291,7 @@ export class DbRootUtils {
       overrides: module.overrides ?? {},
       rewrites: module.rewrites ?? {},
       labels: module.labels ?? {},
-      names: module.names ?? {},
+      names: nameLookup,
       structs: structLookup,
       blocks: blocksArray.sort((a, b) => {
         const orderA = a.order ?? 0;
@@ -312,7 +319,8 @@ export class DbRootUtils {
       projectFiles: projectChunks,
       comments: module.comments ?? {},
       blockNotes: module.blockNotes ?? {},
-      partNotes: module.partNotes ?? {}
+      partNotes: module.partNotes ?? {},
+      types: typeLookup
     };
 
     return root;

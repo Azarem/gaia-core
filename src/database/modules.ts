@@ -20,10 +20,11 @@ export interface DbGameRomModule {
     headers: Partial<DbHeader>[]
     groups: Record<string, Partial<DbGroup>>
     fileTypes: Record<string, Partial<DbFileType>>
-    names: Record<number, string>
-    comments: Record<number, string>
-    blockNotes: Record<string, string>
-    partNotes: Record<string, string>
+    names?: Record<number, string>
+    types?: Record<number, string>
+    comments?: Record<number, string>
+    blockNotes?: Record<string, string>
+    partNotes?: Record<string, string>
 }
 
 export interface DbBaseRomModule extends DbGameRomModule {

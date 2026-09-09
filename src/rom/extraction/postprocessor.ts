@@ -187,8 +187,10 @@ export class PostProcessor {
       let objLocation = tableList[0].location;
       let valueLocation = tableList.length + objLocation++;
 
+      const extractName = part.label || this._referenceManager.tryGetName(part.location)?.referenceName;
+
       const newLocationList: LocationWrapper[] = [];
-      const newLocationTable: TableEntry = { location: valueLocation++, object: newLocationList, name: `${part.label}_extract_table` };
+      const newLocationTable: TableEntry = { location: valueLocation++, object: newLocationList, name: `${extractName}_extract_table` };
       
       const newTableList: TableEntry[] = [ newLocationTable ];
 

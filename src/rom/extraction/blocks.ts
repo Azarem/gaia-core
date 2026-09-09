@@ -99,6 +99,9 @@ export class BlockReader {
     for (const [location, value] of Object.entries(this._root.names)) {
       this._referenceManager.tryAddName(parseInt(location), value);
     }
+    for (const [location, value] of Object.entries(this._root.types)) {
+      this._referenceManager.tryAddStruct(parseInt(location), value);
+    }
   }
 
   /**
@@ -314,7 +317,7 @@ export class BlockReader {
     this._romDataReader.position = part.location;
     this._partEnd = part.location + part.size;
 
-    let currentStruct = RomProcessingConstants.stripMarkers(part.structName || BlockReaderConstants.BINARY_TYPE);
+    let currentStruct = RomProcessingConstants.stripMarkers(part.structName || BlockReaderConstants.CODE_TYPE);
 
     const chunks: TableEntry[] = [];
     const reg = new Registers(this._root.config.memoryMode); //platform.createRegisters()

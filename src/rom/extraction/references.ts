@@ -155,11 +155,11 @@ export class ReferenceManager {
     //   if(name && block.includes?.has(name)) name = undefined;
     // }
     
-    const partMatch = block?.parts?.find(y => y.location == location);
+    const partMatch = block?.parts?.find(y => location >= y.location && location < y.location + y.size);
     const targetBlock = partMatch ? undefined : this.root.blocks.find(x => x.parts.find(y => y.start <= location && y.end > location));
 
     // Try to get existing reference
-    if (!name) name = this.tryGetName(location).referenceName;
+    if (!name) name = (partMatch?.location === location ? partMatch.label : undefined) ?? this.tryGetName(location).referenceName;
 
     if (!name) {
       if (isBranch) name = this.createBranchLabel(location);
