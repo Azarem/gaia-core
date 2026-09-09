@@ -22,8 +22,8 @@ import type { BlockReader } from './blocks';
 export class OperationContext {
   public size: number = 0;
   public nextAddress: number = 0;
-  public xForm1: string | null = null;
-  public xForm2: string | null = null;
+  public xForm1: string | undefined = undefined;
+  public xForm2: string | undefined = undefined;
   public copDef: CopDef | null = null;
 }
 

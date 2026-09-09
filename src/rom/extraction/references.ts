@@ -90,7 +90,7 @@ export class ReferenceManager {
   }
 
   public createTypeName(type: string, location: number): string {
-    let name = type.toLowerCase();
+    let name = type.replaceAll('-', '_').toLowerCase();
     const isSoft = name[0] === '~';
     if(isSoft) name = name.substring(1);
     const isRaw = name[name.length - 1] === '!';
@@ -146,6 +146,7 @@ export class ReferenceManager {
       name = this.tryGetName(rewrite).referenceName;
       if (!name) throw new Error('Rewrite reference not found');
       label = this.processClosestMatch(location, rewrite);
+      location = rewrite;
     }
 
     //name = ChunkFileUtils.isOutside(block, resolvedLocation) && this.fileTable.get(resolvedLocation) || null;
@@ -153,6 +154,9 @@ export class ReferenceManager {
     //   name = this.fileTable.get(block.location);
     //   if(name && block.includes?.has(name)) name = undefined;
     // }
+    
+    const partMatch = block?.parts?.find(y => y.location == location);
+    const targetBlock = partMatch ? undefined : this.root.blocks.find(x => x.parts.find(y => y.start <= location && y.end > location));
 
     // Try to get existing reference
     if (!name) name = this.tryGetName(location).referenceName;
@@ -161,15 +165,19 @@ export class ReferenceManager {
       if (isBranch) name = this.createBranchLabel(location);
       else {
         const closestReference = this.findClosestReference(location);
-        if (closestReference) { name = closestReference.name; label = closestReference.label; }
+        if (closestReference) { name = closestReference.name; label = closestReference.label; location = closestReference.location; }
         else name = this.createFallbackName(location);
       }
     }
+
+    if (name[0] === '~') name = name.substring(1);
+
+    const blockName = targetBlock && targetBlock.name !== block?.name && targetBlock.name !== name ? targetBlock.name + '.' : '';
     
-    return `${prefix || ''}${name}${label || ''}`;
+    return `${prefix || ''}${blockName}${name}${label || ''}`;
   }
 
-  public findClosestReference(location: number): { name: string; label: string } | undefined {
+  public findClosestReference(location: number): { name: string; label: string; location: number } | undefined {
     let closestDistance = BlockReaderConstants.REF_SEARCH_MAX_RANGE;
     let name: string | undefined;
     let closestLocation: number | undefined;
@@ -187,7 +195,7 @@ export class ReferenceManager {
       if (closestDistance === 1) break;
     }
 
-    return name ? { name, label: this.processClosestMatch(location, closestLocation!) } : undefined;
+    return name ? { name, label: this.processClosestMatch(location, closestLocation!), location: closestLocation! } : undefined;
   }
 
   // private processRewrite(location: number, rewrite: number): { location: number; label?: string } {

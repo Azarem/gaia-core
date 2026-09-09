@@ -96,7 +96,7 @@ export class AsmReader {
     context.size = size;
     context.nextAddress = next;
     context.xForm1 = this._transformProcessor.getTransform();
-    context.xForm2 = null;
+    //context.xForm2 = null;
     context.copDef = null;
 
     return context;

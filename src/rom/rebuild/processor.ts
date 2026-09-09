@@ -17,7 +17,7 @@ export class RomProcessor {
     this.writer = writer;
   }
 
-  public async repack(allFiles: ChunkFile[], modules?: string[]): Promise<Map<string, number>> {
+  public async repack(allFiles: ChunkFile[], modules?: string[]): Promise<Map<string, AsmBlock>> {
     // Discover files
     //const allFiles = await this.discoverFiles(this.writer._projectRoot.baseDir);
 
@@ -37,7 +37,7 @@ export class RomProcessor {
       else if (file.type.isBlock) asmFiles.push(file);
       else if (!file.struct) continue;
       
-      const assembler = new Assembler(this.writer.root, file.textData!, conditionFiles);
+      const assembler = new Assembler(this.writer.root, file, conditionFiles);
       const { blocks, includes, reqBank } = assembler.parseAssembly();
       file.parts = blocks;
       file.includes = includes;
@@ -84,8 +84,43 @@ export class RomProcessor {
     // Assembly processing now happens in project.ts via ChunkBlockReader.analyzeAndResolveChunks()
     // This provides comprehensive cross-referencing and object graph generation
 
+    const masterLookup = new Map<string, AsmBlock>();
+
+    // Build include lookup map per asm file
+    for (const f of asmFiles) {
+      // const includeBlocks = asmFiles
+      //   .filter(x => f.includes?.has(x.name.toUpperCase()))
+      //   .flatMap(x => x.parts!)
+      //   .filter(b => !!b.label);
+
+      f.includeLookup = masterLookup;
+
+      // //Add labels from include blocks
+      // for (const b of includeBlocks) {
+      //   let label = b.label;
+      //   if (label) {
+      //     if (label[label.length - 1] === '!') label = label.slice(0, -1);
+      //     f.includeLookup.set(label.toUpperCase(), b);
+      //   }
+      // }
+
+      //Add labels from current file
+      for (const b of f.parts!) {
+        let label = b.label;
+        if (label) {
+          //const lastChar = label[label.length - 1];
+          //const isOverride = lastChar === '!' || lastChar === '+' || lastChar === '-';
+          //if (label[label.length - 1] === '!') label = label.slice(0, -1);
+          label = label.toUpperCase();
+          if(masterLookup.get(label)) throw new Error(`Duplicate label: ${b.label}`);
+          masterLookup.set(label, b);
+          //f.includeLookup.set(label, b);
+        }
+      }
+    }
+
     // Apply patches to asm blocks
-    RomProcessor.applyPatches(asmFiles, patches);
+    RomProcessor.applyPatches(asmFiles, patches, masterLookup);
 
     // Calculate ASM sizes
     for (const file of allFiles) {
@@ -101,31 +136,6 @@ export class RomProcessor {
       ChunkFileUtils.rebase(file);
     }
 
-    const masterLookup = new Map<string, number>();
-
-    // Build include lookup map per asm file
-    for (const f of asmFiles) {
-      const includeBlocks = asmFiles
-        .filter(x => f.includes?.has(x.name.toUpperCase()))
-        .flatMap(x => x.parts!)
-        .filter(b => !!b.label);
-
-      f.includeLookup = new Map<string, AsmBlock>();
-
-      //Add labels from include blocks
-      for (const b of includeBlocks) {
-        if (b.label) f.includeLookup.set(b.label.toUpperCase(), b);
-      }
-
-      //Add labels from current file
-      for (const b of f.parts!) {
-        if(b.label) {
-          const nameUpper = b.label.toUpperCase();
-          masterLookup.set(nameUpper, b.location);
-          f.includeLookup.set(nameUpper, b);
-        }
-      }
-    }
 
     // Create block lookup for resolving labels to locations
     const fileLookup = new Map<string, number>();
@@ -142,49 +152,64 @@ export class RomProcessor {
     return masterLookup;
   }
 
-  public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[]): void {
-    for (const patch of patches.filter(x => x.includes && x.includes.size > 0)) {
+  public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[], masterLookup: Map<string, AsmBlock>): void {
+    for (const patch of patches) { //.filter(x => x.includes && x.includes.size > 0)) {
       let file: ChunkFile | null = null;
       let dstIx = -1;
-      const inc = asmFiles.filter(x => patch.includes!.has(x.name.toUpperCase()));
+      //const inc = asmFiles.filter(x => !.has(x.name.toUpperCase()));
       for (let ix = 0; patch.parts && ix < patch.parts.length;) {
         const block = patch.parts[ix];
         let match: any = null;
         let adjust = 0;
-        if (block.label) { 
-          let label = block.label;
+        let force = false;
+        let label = block.label;
+
+        if (label) {
+          if (label[label.length - 1] === '!') {
+            force = true;
+            label = label.slice(0, -1);
+          }
           const adjustIx = label.search(/[-+]$/)
           if(adjustIx > 0) {
             adjust = label[adjustIx] === '+' ? 1 : -1;
             label = label.slice(0, adjustIx);
           }
-          for (const i of inc) {
-            if (!i.parts) continue;
-            for (let y = 0; y < i.parts.length; y++) {
-              const check = i.parts[y];
-              if (check.label === label) {
-                file = i; 
-                dstIx = y; 
-                match = check;
-                break;
-              }
-            }
-          }
+          match = masterLookup.get(label.toUpperCase());
+
+          // for (const i of inc) {
+          //   if (!i.parts) continue;
+          //   for (let y = 0; y < i.parts.length; y++) {
+          //     const check = i.parts[y];
+          //     if (check.label === label) {
+          //       file = i; 
+          //       dstIx = y; 
+          //       match = check;
+          //       break;
+          //     }
+          //   }
+          // }
         }
-        if (match) {
+
+        if (match && match.file !== patch) {
+          file = match.file;
+          dstIx = match.file.parts!.indexOf(match);
           if(adjust !== 0) {
             if(adjust > 0) dstIx++;
             file!.parts!.splice(dstIx++, 0, block);
           } else {
+            masterLookup.set(label!.toUpperCase(), block);
             file!.parts![dstIx++] = block;
           }
+        } else if (force || adjust !== 0) {
+          throw new Error(`Patch ${patch.name} contains a rewrite that does not exist: ${label}`);
         } else if (dstIx >= 0) {
           file!.parts!.splice(dstIx++, 0, block);
         } else { ix++; continue; }
-        if(!file!.includes) file!.includes = new Set();
-        file!.includes.add(patch.name.toUpperCase());
+        // if(!file!.includes) file!.includes = new Set();
+        // file!.includes.add(patch.name.toUpperCase());
         //for(const include of patch.includes!) file!.includes.add(include);
         patch.parts!.splice(ix, 1);
+        block.file = file!;
       }
     }
   }

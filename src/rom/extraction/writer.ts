@@ -95,28 +95,36 @@ export class BlockWriter {
     this._referenceManager = block.referenceManager!;
     this._currentBlock = block;
 
+    const notes = this._root.blockNotes[block.name];
+    if (notes?.length > 0) {
+      lines.push(...notes.split(/\r?\n/).map(line => `; ${line}`));
+      lines.push('---------------------------------------------');
+      lines.push('');
+    }
+
     // Write bank information if not movable
     if (block.bank !== undefined) {
       lines.push(`?BANK ${block.bank.toString(16).toUpperCase().padStart(2, '0')}`);
+      lines.push('');
     }
 
     // Write includes - these should be from the block's include list
     const includes = ChunkFileUtils.getIncludes(block);
-    if (includes && includes.length > 0) {
-      lines.push('');
+    if (includes?.length > 0) {
       for (const inc of includes.sort((a, b) => a.name.localeCompare(b.name))) {
         lines.push(`?INCLUDE '${inc.name}'`);
       }
+      lines.push('');
     }
 
     // Write mnemonics - these should be from the root mnemonics that are referenced in this block
     const mnemonics = this.getMnemonicsForBlock(block);
-    if (mnemonics && mnemonics.length > 0) {
-      lines.push('');
+    if (mnemonics?.length > 0) {
       for (const [name, address] of mnemonics) {
         const paddedName = name.padEnd(30, ' ');
         lines.push(`!${paddedName} ${address}`); // ${address.toString(16).toUpperCase().padStart(4, '0')}`);
       }
+      lines.push('');
     }
 
     // Apply any post processing defined for the block
@@ -127,7 +135,6 @@ export class BlockWriter {
       this._currentPart = part;
       this._isInline = true;
 
-      lines.push('');
       lines.push('---------------------------------------------');
 
       const objectLines = this.writeObject(part.objList, -1);
@@ -139,7 +146,7 @@ export class BlockWriter {
     // Apply replace transforms
     if (block.transforms) {
       for (const x of block.transforms) {
-        if (x.key && x.value) {
+        if (x.key && x.value !== undefined) {
           const regex = new RegExp(x.key, 'g');
           content = content.replace(regex, x.value);
         }
@@ -347,6 +354,7 @@ export class BlockWriter {
     const isInline = this._isInline;
     //this._isInline = true;
 
+    let first = true;
     for (const t of tGroup) {
       const nameResult = this._referenceManager.tryGetName(t.location);
       //const adrs = Address.fromInt(t.location, this._blockReader._root.config.memoryMode);
@@ -354,9 +362,18 @@ export class BlockWriter {
       const name = nameResult.found ? nameResult.referenceName! : `loc_${t.location.toString(16).toUpperCase().padStart(6, '0')}`;
       
       const objectLines = this.writeObject(t.object, depth + 1);
+
+      const notes = this._root.partNotes[name];
+      if (notes?.length > 0) {
+        lines.push('');
+        if (!first) lines.push('---------------------------------------------');
+        lines.push(...notes.split(/\r?\n/).map(line => `; ${line}`));
+      }
+
       lines.push('');
       lines.push(`${name} ${objectLines[0]}`);
       if(objectLines.length > 1) lines.push(...objectLines.slice(1)); 
+      first = false;
     }
     
     this._isInline = isInline;
@@ -389,6 +406,13 @@ export class BlockWriter {
         let label = this._referenceManager.tryGetName(op.location)?.referenceName;
         if (!label && first && depth > 0) label = `code_${op.location.toString(16).toUpperCase().padStart(6, '0')}`;
         if(label) {
+
+          const notes = this._root.partNotes[label];
+          if (notes?.length > 0) {
+            lines.push('');
+            lines.push(...notes.split(/\r?\n/).map(line => `; ${line}`));
+          }
+
           lines.push('');
           lines.push(`  ${label}:`);
         }
@@ -430,6 +454,9 @@ export class BlockWriter {
           opLine += this.formatDefaultOperand(resolvedOperand, op.size);
         }
       }
+
+      const comment = this._root.comments[op.location];
+      if (comment) opLine = opLine.padEnd(25, ' ') + ` ; ${comment}`;
       
       lines.push(opLine);
     }

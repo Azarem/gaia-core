@@ -113,16 +113,16 @@ export class BlockReader {
   /**
    * Resolves mnemonic for a given address
    */
-  public resolveMnemonic(addr: Address): void {
+  public resolveMnemonic(addr: Address, emitAll: boolean): void {
     let offset = 0;
     const isWram = addr.bank === 0x7E || addr.bank === 0x7F;
 
     if (isWram) {
-      if (!addr.isShort) return;
+      if (!addr.isShort && !emitAll) return;
       offset = addr.toInt();
     }
     else if (!addr.isCodeBank || addr.offset >= 0x8000) return;
-    else if (addr.isShort) return;
+    else if (addr.isShort && !emitAll) return;
     else offset = addr.offset;
     
     let label = this._root.mnemonics[offset];
@@ -139,8 +139,17 @@ export class BlockReader {
       label = label.substring(0, ix);
     }
 
-    if (isWram) this._currentChunk!.mnemonics[`S_${label}`] = (offset & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-    else this._currentChunk!.mnemonics[`L_${label}`] = (addr.bank << 16 | offset).toString(16).toUpperCase().padStart(6, '0');
+    if (isWram && addr.isShort) {
+      this._currentChunk!.mnemonics[`S_${label}`] = (offset & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+      return;
+    }
+
+    if (!isWram && !addr.isShort) {
+      this._currentChunk!.mnemonics[`L_${label}`] = (addr.bank << 16 | offset).toString(16).toUpperCase().padStart(6, '0');
+      return;
+    }
+
+    this._currentChunk!.mnemonics[label] = offset.toString(16).toUpperCase().padStart(offset <= 0xFF ? 2 : offset <= 0xFFFF ? 4 : 6, '0');
   }
 
   /**
@@ -340,7 +349,7 @@ export class BlockReader {
    * Processes a continuous entry (same type as previous)
    */
   private processContinuousEntry(current: string, reg: Registers, bank: number | undefined, last: TableEntry): void {
-    const obj = this._typeParser.parseType(current, reg, 0, bank);
+    let obj = this._typeParser.parseType(current, reg, 0, bank, false);
     if (!Array.isArray(last.object)) last.object = [last.object];
     (last.object as unknown[]).push(obj);
   }
@@ -473,6 +482,7 @@ export class BlockReader {
       this._currentChunk = chunkFile;
 
       const asmBlock = new AsmBlock(0, chunkFile.size, false, chunkFile.name, chunkFile.struct);
+      asmBlock.file = chunkFile;
       chunkFile.parts = [asmBlock];
       this._currentAsmBlock = asmBlock;
       this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);
@@ -520,7 +530,7 @@ export class BlockReader {
     }
 
     if (obj instanceof Address) {
-      this.resolveMnemonic(obj);
+      this.resolveMnemonic(obj, true);
       return;
     }
 

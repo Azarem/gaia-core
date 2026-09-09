@@ -56,7 +56,7 @@ export class RomWriter {
     this.outBuffer = new Uint8Array(size);
   }
 
-  public writeHeaders(masterLookup: Map<string, number>): void {
+  public writeHeaders(masterLookup: Map<string, AsmBlock>): void {
     const values = this.prepareHeaderValues();
     for (const header of this.root.headers) {
       if(header.condition && !eval(header.condition)) continue;
@@ -77,7 +77,7 @@ export class RomWriter {
   }
 
 
-  public writeHeader(header: DbHeader, values: any, masterLookup: Map<string, number>): void {
+  public writeHeader(header: DbHeader, values: any, masterLookup: Map<string, AsmBlock>): void {
     const buf = this.outBuffer!;
     
     let pos = new Address(header.bank, header.address, this.root.config.memoryMode).toLocation();
@@ -125,7 +125,7 @@ export class RomWriter {
         case 'entry':
           let location = 0;
           if(typeof value === 'string') {
-            location = value === '' ? 0 : masterLookup.get(value.toUpperCase()) ?? 0;
+            location = value === '' ? 0 : masterLookup.get(value.toUpperCase())?.location ?? 0;
           } else if(typeof value === 'number') {
             location = value;
           }
@@ -430,6 +430,9 @@ export class RomWriter {
               label = label.substring(0, operatorIdx);
             }
 
+            const dotIx = label.indexOf('.');
+            if(dotIx > 0) label = label.substring(dotIx + 1);
+
             // Search local labels first
             const labelUpper = label.toUpperCase();
             let target: AsmBlock | null = null;
@@ -536,6 +539,11 @@ export class RomWriter {
 
             switch (type) {
               case AddressType.Offset:
+
+                if ((parentOp?.mnem === 'JSR' || parentOp?.mnem === 'JMP' || parentOp?.mnem === 'COP') && (block.location & 0x3F0000) !== (loc & 0x3F0000)) {
+                  console.log(`Cross bank call detected in ${block.label}: '${parentOp?.mnem} ${label}' (${loc.toString(16).toUpperCase()})`);
+                }
+
               case AddressType.WRelative:
                 currentObj = new Word(loc);
                 continue;

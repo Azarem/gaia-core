@@ -4,7 +4,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "${0:X4}",
-    "parseRegex": "^\\$([A-Fa-f0-9]{4}|&[A-Za-z0-9-+_]+)$",
+    "parseRegex": "^\\$([A-Fa-f0-9]{4}|&[A-Za-z0-9-+_.]+)$",
     "instructions": {
       "ADC": 109,
       "AND": 45,
@@ -40,7 +40,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "${0:X4}, X",
-    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s?[Xx]$",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_.]+),\\s?[Xx]$",
     "instructions": {
       "ADC": 125,
       "AND": 61,
@@ -66,7 +66,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "${0:X4}, Y",
-    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s?[Yy]$",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_.]+),\\s?[Yy]$",
     "instructions": {
       "ADC": 121,
       "AND": 57,
@@ -84,7 +84,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "(${0:X4})",
-    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+)\\)$",
+    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_.]+)\\)$",
     "instructions": {
       "JMP": 108
     }
@@ -94,7 +94,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "[${0:X4}]",
-    "parseRegex": "^\\[(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+)\\]$",
+    "parseRegex": "^\\[(\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_.]+)\\]$",
     "instructions": {
       "JML": 220
     }
@@ -104,7 +104,7 @@
     "operands": [ "Offset" ],
     "size": 3,
     "formatString": "(${0:X4}, X)",
-    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_]+),\\s*[Xx]\\)$",
+    "parseRegex": "^\\((\\$[A-Fa-f0-9]{4}|\\$?&[A-Za-z0-9-+_.]+),\\s*[Xx]\\)$",
     "instructions": {
       "JMP": 124,
       "JSR": 252
@@ -115,7 +115,7 @@
     "operands": [ "Address" ],
     "size": 4,
     "formatString": "${0:X6}",
-    "parseRegex": "^\\$([A-Fa-f0-9]{6}|\\@[A-Za-z0-9-+_]+)$",
+    "parseRegex": "^\\$([A-Fa-f0-9]{6}|\\@[A-Za-z0-9-+_.]+)$",
     "instructions": {
       "ADC": 111,
       "AND": 47,
@@ -134,7 +134,7 @@
     "operands": [ "Address" ],
     "size": 4,
     "formatString": "${0:X6}, X",
-    "parseRegex": "^(\\$[A-Fa-f0-9]{6}|\\$?@[A-Za-z0-9-+_]+),\\s?[Xx]$",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{6}|\\$?@[A-Za-z0-9-+_.]+),\\s?[Xx]$",
     "instructions": {
       "ADC": 127,
       "AND": 63,
@@ -308,7 +308,7 @@
     "operands": [ "Immediate" ],
     "size": 2,
     "formatString": "#${0:X2}",
-    "parseRegex": "^#(\\$[A-Fa-f0-9]{2,4}|\\$?[&^*][A-Za-z0-9-+_]+)$",
+    "parseRegex": "^#(\\$[A-Fa-f0-9]{2,4}|\\$?[&^*][A-Za-z0-9-+_.]+)$",
     "instructions": {
       "ADC": 105,
       "AND": 41,
@@ -384,7 +384,7 @@
     "operands": [ "Relative" ],
     "size": 2,
     "formatString": "{0:X2}",
-    "parseRegex": "^([A-Za-z_][A-Za-z0-9_]*|\\$[A-Fa-f0-9]{2})$",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{2}|[A-Za-z0-9-+_]+|)$",
     "instructions": {
       "BPL": 16,
       "BMI": 48,
@@ -402,7 +402,7 @@
     "operands": [ "RelativeLong" ],
     "size": 3,
     "formatString": "{0:X4}",
-    "parseRegex": "^([A-Za-z_][A-Za-z0-9_]*|\\$[A-Fa-f0-9]{4})$",
+    "parseRegex": "^(\\$[A-Fa-f0-9]{4}|[A-Za-z0-9-+_]+|)$",
     "instructions": {
       "BRL": 130,
       "PER": 98
@@ -447,7 +447,7 @@
     "operands": [ "Byte", "Byte" ],
     "size": 3,
     "formatString": "#${0:X2}, #${1:X2}",
-    "parseRegex": "^#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9-+_]+),\\s?#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9-+_]+)$",
+    "parseRegex": "^#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9_.]+),\\s?#\\$([A-Fa-f0-9]{2}|\\^[A-Za-z0-9_.]+)$",
     "instructions": {
       "MVN": 84,
       "MVP": 68

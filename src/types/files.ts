@@ -65,6 +65,7 @@ export class ChunkFile {
 
     if(this.struct && !this.compressed) {
       const newPart = new AsmBlock(this.location, this.size, false, this.name, this.struct);
+      newPart.file = this;
       this.parts = [newPart];
       return;
     }
@@ -119,6 +120,7 @@ export class ChunkFile {
         part.type || undefined
         //part.bank
       );
+      asmBlock.file = this;
       this.size += asmBlock.size;
       this.parts.push(asmBlock);
     }

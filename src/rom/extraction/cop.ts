@@ -11,6 +11,7 @@ import {
 import type { CopDef } from '../../database';
 import type { BlockReader } from './blocks';
 import { TransformProcessor } from './transforms';
+import { Registers } from '../../assembly';
 
 /**
  * Handles COP (Coprocessor) command processing
@@ -80,12 +81,8 @@ export class CopCommandProcessor {
       }
       
       const xform = this._transformProcessor.getTransform();
-
-      operands.push(this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank));
-
-      if(xform) {
-        this._transformProcessor.applyTransform(xform, operands.length - 1, operands);
-      }
+      const op = this.readMemberTypeValue(memberType, partStr, isPtr, referenceType, addrType, bank);
+      operands.push(this._transformProcessor.applyTransform(xform, op));
 
       // If there is a label, ignore reading and use the label instead
       // const label = this._blockReader._root.labels[this._romDataReader.position];

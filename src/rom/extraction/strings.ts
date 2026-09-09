@@ -189,7 +189,7 @@ export class StringReader {
       if (addrs.isROM) {
         sloc = addrs.toLocation();
         this._blockReader.resolveInclude(sloc, false);
-        const name = this._blockReader._referenceManager.resolveName(sloc, AddressType.Unknown, false);
+        const name = this._blockReader._referenceManager.resolveName(sloc, AddressType.Unknown, false, this._blockReader._currentChunk!);
         const opix = indexOfAny(name, RomProcessingConstants.OPERATORS);
         
         if (opix > 0) {

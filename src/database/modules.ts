@@ -21,6 +21,9 @@ export interface DbGameRomModule {
     groups: Record<string, Partial<DbGroup>>
     fileTypes: Record<string, Partial<DbFileType>>
     names: Record<number, string>
+    comments: Record<number, string>
+    blockNotes: Record<string, string>
+    partNotes: Record<string, string>
 }
 
 export interface DbBaseRomModule extends DbGameRomModule {

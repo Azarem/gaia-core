@@ -8,44 +8,48 @@ import { AsmReader } from '../extraction/asm';
  * Converted from GaiaLib/Rom/Rebuild/AssemblerState.cs
  */
 export class AssemblerState {
-  private readonly dbStruct: DbStruct | null;
-  private readonly parentStruct: DbStruct | null;
+  private readonly dbStruct?: DbStruct;
+  private readonly parentStruct?: DbStruct;
   private readonly root: DbRoot;
-  private readonly discriminator: number | null;
-  private readonly discriminatorLogic: string | null;
+  private readonly discriminator?: number;
+  private readonly discriminatorLogic?: string;
   private readonly discriminatorSize: number | undefined;
-  private delimiter: number | null;
+  private delimiter?: number;
   private memberOffset: number;
   private dataOffset: number;
-  private readonly memberTypes: string[] | null;
-  private currentType: string | null;
+  private readonly memberTypes?: string[];
+  private currentType?: string;
   private readonly context: Assembler;
+  private readonly openTag?: string;
 
-  constructor(context: Assembler, structType: string | null = null, saveDelimiter: boolean = false) {
+  constructor(context: Assembler, structType?: string, openTag?: string, saveDelimiter: boolean = false) {
     this.context = context;
     this.root = context.root;
+    this.openTag = openTag;
 
-    this.dbStruct = structType === null ? null
-      : Object.values(this.root.structs).find(x =>
-          x.name.toLowerCase() === structType.toLowerCase()
-        ) || null;
+    if (openTag === '<') {
+      if (!structType) throw new Error(`Struct type required for < tag.`);
 
-    this.parentStruct = !this.dbStruct || !this.dbStruct.parent ? null
-      : Object.values(this.root.structs).find(x =>
-          x.name.toLowerCase() === this.dbStruct!.parent!.toLowerCase()
-        ) || null;
+      structType = structType.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
+      this.dbStruct = this.root.structs[structType];
+      if (!this.dbStruct) throw new Error(`Unknown struct type: ${structType}`);
+  
+      const parentName = this.dbStruct.parent?.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
+      this.parentStruct = this.root.structs[parentName ?? ''];
+      if (parentName && !this.parentStruct) throw new Error(`Unknown parent struct type: ${parentName}`);
+    }
 
-    this.discriminator = this.parentStruct?.discriminator ?? null;
+    this.discriminator = this.parentStruct?.discriminator;
     this.discriminatorLogic = this.dbStruct?.discriminatorLogic ?? this.parentStruct?.discriminatorLogic ?? "=";
     this.discriminatorSize = this.parentStruct?.discriminatorSize ?? 1;
-    this.delimiter = this.dbStruct?.delimiter ?? null;
+    this.delimiter = this.dbStruct?.delimiter;
     this.memberOffset = 0;
     this.dataOffset = 0;
-    this.memberTypes = this.dbStruct?.types || null;
-    this.currentType = this.memberTypes?.[this.memberOffset] || null;
+    this.memberTypes = this.dbStruct?.types;
+    this.currentType = this.memberTypes?.[this.memberOffset];
 
     if (saveDelimiter) {
-      this.context.lastDelimiter = this.dbStruct?.delimiter ?? this.parentStruct?.delimiter ?? null;
+      this.context.lastDelimiter = this.dbStruct?.delimiter ?? this.parentStruct?.delimiter;
     }
   }
 
@@ -94,6 +98,7 @@ export class AssemblerState {
     const location = parseInt(hex, 16);
 
     this.context.blocks.push(this.context.currentBlock = new AsmBlock(location));
+    this.context.currentBlock!.file = this.context.file;
     //this.context.blockIndex++;
   }
 
@@ -109,20 +114,10 @@ export class AssemblerState {
         const value = parseInt(valueStr, 16);
         
         let endIx = operand.substring(ix + 1).search(RomProcessingConstants.SYMBOL_SPACE_REGEX);
-        if(endIx < 0) {
-          endIx = operand.length;
-        } else {
-          endIx += ix + 1;
-        }
-        
-        const number = parseInt(operand.substring(ix + 1, endIx), 16);
+        endIx = endIx < 0 ? operand.length : (endIx + ix + 1);
 
-        let result: number;
-        if (op === '-') {
-          result = value - number;
-        } else {
-          result = value + number;
-        }
+        const number = parseInt(operand.substring(ix + 1, endIx), 16);
+        const result = value + ((op === '-') ? -number : number);
 
         const len = (ix - vix) <= 2 ? 2 : (ix - vix) <= 4 ? 4 : 6;
 
@@ -152,7 +147,7 @@ export class AssemblerState {
       this.root.stringDelimiters.includes(operand[0]),
       mnemonic
     );
-
+    newBlock.file = this.context.file;
     // const conditionBlock = this.context.conditionBlock;
     // if(conditionBlock) {
     //   conditionBlock.objList.push(newBlock);
@@ -182,7 +177,7 @@ export class AssemblerState {
     return true;
   }
 
-  public processText(openTag?: string): void {
+  public processText(): void {
     this.checkDisc();
 
     while (!this.context.eof) {
@@ -217,8 +212,8 @@ export class AssemblerState {
         if (RomProcessingConstants.ADDRESS_SPACE.includes(lineSymbol)) {
           this.context.processRawData();
 
-          if (openTag === '[') {
-            this.context.lastDelimiter = null;
+          if (this.openTag === '[') {
+            this.context.lastDelimiter = undefined;
           }
 
           this.advancePart();
@@ -226,7 +221,7 @@ export class AssemblerState {
         }
 
         if (lineSymbol === '>') {
-          if (openTag === '<') {
+          if (this.openTag === '<') {
             this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
             this.checkDisc();
             if(this.dbStruct?.tail !== undefined) {
@@ -261,15 +256,15 @@ export class AssemblerState {
 
         if(lineSymbol === '{') {
           this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
-          const state = new AssemblerState(this.context, this.currentType);
-          state.processText('{');
+          const state = new AssemblerState(this.context, this.currentType, '{');
+          state.processText();
           this.advancePart();
           continue;
         }
 
         // Block close
         if (lineSymbol === '}') {
-          if (openTag === '{') {
+          if (this.openTag === '{') {
             this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
           }
           return;
@@ -278,8 +273,8 @@ export class AssemblerState {
         // Array Open
         if (lineSymbol === '[') {
           this.context.lineBuffer = this.context.lineBuffer.substring(1).replace(/^[\s,\t]+/, '');
-          const state = new AssemblerState(this.context, this.currentType);
-          state.processText('[');
+          const state = new AssemblerState(this.context, this.currentType, '[');
+          state.processText();
           this.advancePart();
           continue;
         }
@@ -299,8 +294,8 @@ export class AssemblerState {
           // Process object tags
           if (operand && operand.startsWith('<')) {
             this.context.lineBuffer = operand.substring(1).replace(/^[, \t]+/, '');
-            const state = new AssemblerState(this.context, mnemonic, openTag === '[' && this.currentType == null);
-            state.processText('<');
+            const state = new AssemblerState(this.context, mnemonic, '<', this.openTag === '[' && this.currentType == null);
+            state.processText();
             mnemonic = null;
             continue;
           }

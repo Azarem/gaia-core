@@ -125,6 +125,7 @@ export class PostProcessor {
     }
 
     const newBlock = new AsmBlock(block.location - 1, 0, false, newBlockName);
+    newBlock.file = block;
     newBlock.objList = newParts;
 
     block.parts = [ newBlock ];
@@ -165,6 +166,7 @@ export class PostProcessor {
 
     const newName = `${structType}_list`;
     const newBlock = new AsmBlock(block.location + block.size - 1, 0, false, newName);
+    newBlock.file = block;
     newBlock.objList = [ { location: newBlock.location, object: keyList } ];
 
     this._referenceManager.nameTable.set(newBlock.location, newName);

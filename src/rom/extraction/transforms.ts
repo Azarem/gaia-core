@@ -28,12 +28,12 @@ export class TransformProcessor {
   /**
    * Retrieves transform information for the current ROM position
    */
-  public getTransform(): string | null {
+  public getTransform(): string | undefined {
     const transform = this._labelLookup[this._romDataReader.position];
     if (transform === '') {
       return transform;
     } else if (!transform) {
-      return null;
+      return undefined;
     }
 
     const transformName = this.cleanTransformName(transform);
@@ -49,21 +49,20 @@ export class TransformProcessor {
   /**
    * Applies transforms to operands
    */
-  public applyTransforms(op1Label: string | null, op2Label: string | null, operands: unknown[]): void {
-    this.applyTransform(op1Label, 0, operands);
-    this.applyTransform(op2Label, 1, operands);
+  public applyTransforms(op1Label: string | undefined, op2Label: string | undefined, operands: any[]): void {
+    if(operands.length > 0) operands[0] = this.applyTransform(op1Label, operands[0]);
+    if(operands.length > 1) operands[1] = this.applyTransform(op2Label, operands[1]);
   }
 
-  public applyTransform(transform: string | null, operandIndex: number, operands: unknown[]): void {
-    if (transform === null || transform === undefined || operandIndex >= operands.length) {
-      return;
+  public applyTransform(transform: string | undefined, operand: any | undefined): any {
+    if (transform === undefined || operand === undefined) {
+      return operand;
     }
 
     let type = AddressType.Offset;
     let loc : number | undefined;
 
     if (transform === '' || transform[0] === '$') {
-      const operand = operands[operandIndex] as any;
       const offset = operand && 'value' in operand ? operand['value'] : operand as number;
       const bank = transform[0] === '$' 
         ? parseInt(transform.substring(1), 16) 
@@ -75,7 +74,7 @@ export class TransformProcessor {
       type = Address.typeFromCode(transform[0]);
     }
 
-    operands[operandIndex] = loc !== undefined ? new LocationWrapper(loc, type) : transform;
+    return loc !== undefined ? new LocationWrapper(loc, type) : transform;
   }
 
   private cleanTransformName(transform: string): string {

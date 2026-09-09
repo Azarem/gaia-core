@@ -1,6 +1,7 @@
 import { RomProcessingConstants, Word, Byte, Long } from '../../types';
 import { DbRoot } from '../../database';
 import { AsmBlock } from '../../types/assembly';
+import { ChunkFile } from '../../types';
 import { StringProcessor } from './string-processor';
 import { SortedMap } from './sorted-map';
 import { AssemblerState } from './assembler-state';
@@ -22,18 +23,19 @@ import { AssemblerState } from './assembler-state';
 export class Assembler {
   public readonly root: DbRoot;
   private readonly lines: string[];
-  private currentLineIndex: number = 0;
+  public currentLineIndex: number = 0;
   public readonly stringProcessor: StringProcessor;
+  public file: ChunkFile;
 
   public lineBuffer: string = '';
   public includes = new Set<string>();
   public blocks: AsmBlock[] = [];
   public tags : Record<string, string> = {};
-  public currentBlock: AsmBlock | null = null;
+  public currentBlock?: AsmBlock;
   public lineCount: number = 0;
   //public blockIndex: number = 0;
-  public lastDelimiter: number | null = null;
-  public reqBank: number | null = null;
+  public lastDelimiter?: number;
+  public reqBank?: number;
   public eof: boolean = false;
   public strDelimRegex: RegExp;
   public conditionFiles: string[];
@@ -41,22 +43,30 @@ export class Assembler {
   private exitCondition: boolean = false;
   private failCondition: boolean = false;
 
-  constructor(dbRoot: DbRoot, textData: string, conditionFiles: string[]) {
+  constructor(dbRoot: DbRoot, file: ChunkFile, conditionFiles: string[]) {
     this.root = dbRoot;
+    this.file = file;
     // Handle both Windows (\r\n) and Unix (\n) line endings
-    this.lines = textData.split(/\r?\n/);
+    this.lines = file.textData!.split(/\r?\n/);
     this.stringProcessor = new StringProcessor(this);
     this.strDelimRegex = new RegExp(`[${this.root.stringDelimiters.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('')}]`);
     this.conditionFiles = conditionFiles;
   }
 
-  public parseAssembly(): { blocks: AsmBlock[], includes: Set<string>, reqBank: number | null } {
+  public parseAssembly(): { blocks: AsmBlock[], includes: Set<string>, reqBank?: number } {
     // Initialize root block (no label, location 0) and set as current
     this.blocks.push(this.currentBlock = new AsmBlock());
-
+    this.currentBlock!.file = this.file;
+    
     // Initialize state machine and process text
     const state = new AssemblerState(this);
-    state.processText();
+    try {
+      state.processText();
+    } catch (error: any | Error) {
+      //console.error(error);
+      error.message = `Error processing ${this.file.name} at line ${this.currentLineIndex - 1}: ${error.message}`;
+      throw error;
+    }
 
     return { 
       blocks: this.blocks, 

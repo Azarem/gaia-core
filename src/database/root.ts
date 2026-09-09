@@ -4,26 +4,19 @@ import { DbBlock } from './blocks';
 import type { DbConfig } from './config';
 import type { DbEntryPoint } from './entrypoints';
 import { DbFile, DbFileType } from './files';
-import { DbOverride } from './overrides';
 import { DbStruct } from './structs';
 import { DbAddressingMode } from './addressingMode';
 import { DbStringType, DbStringCommand, DbStringLayer, DbStringDictionary } from './strings';
 import { CopDef } from './cop';
 import { listDirectory, readFileAsBinary, readJsonFile, saveFileAsText, saveFileAsBinary, readFileAsText } from '../utils';
-import type { DbMnemonic } from './mnemonics';
-import type { DbRewrite } from './rewrites';
 import { DbPart } from './parts';
-import type { DbLabel } from './labels';
 import { DbTransform } from './transforms';
 import type { BaseRomFileData, ProjectFileData, ProjectPayload } from '../supabase/types';
 import { OpCode } from './opcode';
-import { fromSupabaseByProject, fromSupabaseByGameRom } from '../supabase/rom-loader';
-import { RomProcessingConstants } from '../types/constants';
 import { MemoryMapMode } from '../types/addressing';
 import { ChunkFile } from '../types/files';
 import { DbScene } from './scenes';
 import { DbGroup } from './groups';
-import { DbAsset } from './assets';
 import { CompressionAlgorithms } from '../compression';
 import { DbBaseRomModule, DbGameRomModule, DbProjectModule } from './modules';
 import { BlockWriter } from '../rom/extraction/writer';
@@ -65,6 +58,9 @@ export interface DbRoot {
   fileTypes: Record<string, DbFileType>;
   fileExtLookup: Record<string, DbFileType>;
   names: Record<number, string>;
+  comments: Record<number, string>;
+  blockNotes: Record<string, string>;
+  partNotes: Record<string, string>;
 }
 
 /**
@@ -219,7 +215,7 @@ export class DbRootUtils {
     }, {} as Record<string, DbStringType>);
 
     const structLookup = Object.entries(module.structs).reduce((acc, x) => {
-      acc[x[0]] = new DbStruct({...x[1], name: x[0]});
+      acc[x[0].replaceAll('-', '_').replaceAll(' ', '_').toLowerCase()] = new DbStruct({...x[1], name: x[0]});
       return acc;
     }, {} as Record<string, DbStruct>);
 
@@ -279,16 +275,16 @@ export class DbRootUtils {
     // Build the database root
     const root: DbRoot = {
       headers: module.headers.map((h) => new DbHeader(h)),
-      mnemonics: module.mnemonics,
+      mnemonics: module.mnemonics ?? {},
       mnemonicsLookup: Object.entries(module.mnemonics).reduce((acc, x) => {
         const value = parseInt(x[0])
         acc[x[1]] = value.toString(16).toUpperCase().padStart(value <= 0xFF ? 2 : value <= 0xFFFF ? 4 : 6, '0');
         return acc;
       }, {} as Record<string, string>),
-      overrides: module.overrides,
-      rewrites: module.rewrites,
-      labels: module.labels,
-      names: module.names,
+      overrides: module.overrides ?? {},
+      rewrites: module.rewrites ?? {},
+      labels: module.labels ?? {},
+      names: module.names ?? {},
       structs: structLookup,
       blocks: blocksArray.sort((a, b) => {
         const orderA = a.order ?? 0;
@@ -313,7 +309,10 @@ export class DbRootUtils {
       groups: groupLookup,
       scenes: sceneLookup,
       baseRomFiles: baseRomChunks,
-      projectFiles: projectChunks
+      projectFiles: projectChunks,
+      comments: module.comments ?? {},
+      blockNotes: module.blockNotes ?? {},
+      partNotes: module.partNotes ?? {}
     };
 
     return root;

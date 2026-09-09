@@ -37,6 +37,7 @@ export class AsmBlock {
   public objList: any[];
   public structName?: string;
   public includes?: Set<{block: ChunkFile, part: AsmBlock}>;
+  public file?: ChunkFile;
 
   constructor(
     location: number = 0,

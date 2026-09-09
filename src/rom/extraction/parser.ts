@@ -65,57 +65,32 @@ export class TypeParser {
     
     if (stringType) return this._stringReader.parseString(stringType, fixedSize, isRaw);
 
-    // Shortcut for symbolic Offsets
-    if (fixedTypeName[0] === '&') {
-      const bankIx = fixedTypeName.indexOf('$');
-      if(bankIx !== -1) {
-        if(fixedTypeName[bankIx + 1] === '$') bank = reg?.value['dataBank'];
-        else bank = parseInt(fixedTypeName.substring(bankIx + 1, fixedTypeName.length), 16);
-        fixedTypeName = fixedTypeName.substring(0, bankIx);
-      }
-      return this.parseLocation(this._romDataReader.readUShort(), bank, fixedTypeName.substring(1), AddressType.Offset, isSoft, reg);
-    }
-
-    // Shortcut for symbolic Addresses
-    if (fixedTypeName[0] === '@') {
-      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.Address, isSoft);
-    }
-    
-    // Shortcut for symbolic Locations
-    if (fixedTypeName[0] === '%') {
-      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.Location, isSoft);
-    }
-    
-    // Shortcut for symbolic OddLocations
-    if (fixedTypeName[0] === '!') {
-      return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), fixedTypeName.substring(1), AddressType.OddLocation, isSoft);
-    }
-    
-    // const isFixed = realTypeName[realTypeName.length - 1] === ')';
-    // let fixedTypeName = realTypeName;
-    // let fixedSize = 0;
-
-    // if(isFixed) {
-    //   const startIx = realTypeName.indexOf('(');
-    //   fixedTypeName = realTypeName.substring(0, startIx);
-    //   fixedSize = parseInt(realTypeName.substring(startIx + 1, realTypeName.length - 1), 10);
-    // }
-
+    const addrType = Address.typeFromCode(fixedTypeName[0]);
+    const isPtr = addrType !== AddressType.Unknown;
 
     // Parse raw values
-    const mType = this.tryParseMemberType(fixedTypeName);
+    let mType = isPtr ? addrType : this.tryParseMemberType(fixedTypeName);
     if (mType !== null) {
+      fixedTypeName = isPtr ? fixedTypeName.substring(1) : '';
+      const transform = this._blockReader._transformProcessor.getTransform();
+      let result: any;
+      if (mType === MemberType.Offset && transform !== undefined) mType = MemberType.Word;
+
       switch (mType) {
-        case MemberType.Byte:
-          return new Byte(this._romDataReader.readByte());
-        case MemberType.Word:
-          return new Word(this.parseWordSafe());
+        case MemberType.Byte: result = new Byte(this._romDataReader.readByte()); break;
+        case MemberType.Word: result = new Word(this.parseWordSafe()); break;
         case MemberType.Offset:
-          return this.parseLocation(this._romDataReader.readUShort(), bank, null, AddressType.Offset, isSoft);
+          const bankIx = fixedTypeName.indexOf('$');
+          if(bankIx !== -1) {
+            if(fixedTypeName[bankIx + 1] === '$') bank = reg?.value['dataBank'];
+            else bank = parseInt(fixedTypeName.substring(bankIx + 1, fixedTypeName.length), 16);
+            fixedTypeName = fixedTypeName.substring(0, bankIx);
+          }
+          return this.parseLocation(this._romDataReader.readUShort(), bank, AddressType.Offset, fixedTypeName, isSoft);
         case MemberType.Address:
-          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Address, isSoft);
         case MemberType.Location:
-          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), null, AddressType.Location, isSoft);
+        case MemberType.OddLocation:
+          return this.parseLocation(this._romDataReader.readUShort(), this._romDataReader.readByte(), mType as unknown as AddressType, fixedTypeName, isSoft);
         case MemberType.Binary:
           return this.parseBinary(fixedSize);
         case MemberType.Code:
@@ -124,9 +99,10 @@ export class TypeParser {
         default:
           throw new Error('Invalid member type');
       }
+      return this._blockReader._transformProcessor.applyTransform(transform, result);
     }
 
-    const parentType = this._blockReader._root.structs[fixedTypeName];
+    const parentType = this._blockReader._root.structs[fixedTypeName.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase()];
     if (!parentType) {
       throw new Error(`Unknown type: ${fixedTypeName}`);
     }
@@ -191,9 +167,10 @@ export class TypeParser {
 
           // Parse each member of the struct
           for (let i = 0; i < memberCount; i++) {
-            const transform = this._blockReader._transformProcessor.getTransform();
-            parts[i] = this.parseType(types[i], reg, depth + 1, bank);
-            this._blockReader._transformProcessor.applyTransform(transform, i, parts);
+            //const transform = this._blockReader._transformProcessor.getTransform();
+            //if(transform !== null) debugger;
+            parts[i] = this.parseType(types[i], reg, depth + 1, bank, false);
+            //this._blockReader._transformProcessor.applyTransform(transform, i, parts);
           }
 
           // Advance (hide) discriminator if it is the last member
@@ -283,7 +260,7 @@ export class TypeParser {
     return outBuffer;
   }
 
-  private parseLocation(offset: number, bank: number | undefined, typeName: string | null, addrType: AddressType, isSoft: boolean = false): unknown {
+  private parseLocation(offset: number, bank: number | undefined, addrType: AddressType, typeName?: string, isSoft?: boolean): unknown {
     // If bank is not provided and offset is 0, it should resolve to #$0000
     if ((bank === undefined || bank === null) && (offset === 0 || offset === 0xFFFF)) {
       return new Word(offset);
@@ -352,7 +329,7 @@ export class TypeParser {
       //const resolvedTypeName = typeName[0] === '~' ? typeName.substring(1) : typeName;
       // If the location is not already in the reference table, add it
       //const referenceName = `${resolvedTypeName.toLowerCase()}_${adrs.toString()}`;
-      const referenceName = `${typeName.toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
+      const referenceName = `${typeName.replaceAll('-', '_').toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
       this._referenceManager.tryAddName(loc, isSoft ? "~" + referenceName : referenceName);
     }
 
