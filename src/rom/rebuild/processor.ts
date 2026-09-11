@@ -17,7 +17,7 @@ export class RomProcessor {
     this.writer = writer;
   }
 
-  public async repack(allFiles: ChunkFile[], modules?: string[]): Promise<Map<string, AsmBlock>> {
+  public async repack(allFiles: ChunkFile[], modules?: string[]): Promise<Record<string, AsmBlock>> {
     // Discover files
     //const allFiles = await this.discoverFiles(this.writer._projectRoot.baseDir);
 
@@ -29,7 +29,7 @@ export class RomProcessor {
 
     if(modules) conditionFiles.push(...modules);
     
-    const dummyMap = new Map<string, number>();
+    const dummyMap: Record<string, number> = {};
     for (const file of allFiles) {
       conditionFiles.push(file.name);
 
@@ -44,9 +44,9 @@ export class RomProcessor {
       file.bank = reqBank ?? void 0;
 
       if(file.struct) {
-        file.includeLookup = new Map<string, AsmBlock>();
+        file.includeLookup = {};
         for (const b of file.parts) {
-          if(b.label) file.includeLookup.set(b.label.toUpperCase(), b);
+          if(b.label) file.includeLookup[b.label.toUpperCase()] = b;
         }
         file.rawData = undefined;
         file.rawData = new Uint8Array(ChunkFileUtils.calculateSize(file));
@@ -84,7 +84,7 @@ export class RomProcessor {
     // Assembly processing now happens in project.ts via ChunkBlockReader.analyzeAndResolveChunks()
     // This provides comprehensive cross-referencing and object graph generation
 
-    const masterLookup = new Map<string, AsmBlock>();
+    const masterLookup: Record<string, AsmBlock> = {};
 
     // Build include lookup map per asm file
     for (const f of asmFiles) {
@@ -112,8 +112,8 @@ export class RomProcessor {
           //const isOverride = lastChar === '!' || lastChar === '+' || lastChar === '-';
           //if (label[label.length - 1] === '!') label = label.slice(0, -1);
           label = label.toUpperCase();
-          if(masterLookup.get(label)) throw new Error(`Duplicate label: ${b.label}`);
-          masterLookup.set(label, b);
+          if(masterLookup[label]) throw new Error(`Duplicate label: ${b.label}`);
+          masterLookup[label] = b;
           //f.includeLookup.set(label, b);
         }
       }
@@ -123,36 +123,29 @@ export class RomProcessor {
     RomProcessor.applyPatches(asmFiles, patches, masterLookup);
 
     // Calculate ASM sizes
-    for (const file of allFiles) {
-      ChunkFileUtils.calculateSize(file);
-    }
+    for (const file of allFiles) ChunkFileUtils.calculateSize(file);
 
     // Assign locations
     const layout = new RomLayout(allFiles, this.writer.root);
     const pages = layout.organize();
 
     // Rebase assemblies
-    for (const file of asmFiles) {
-      ChunkFileUtils.rebase(file);
-    }
-
+    for (const file of asmFiles) ChunkFileUtils.rebase(file);
 
     // Create block lookup for resolving labels to locations
-    const fileLookup = new Map<string, number>();
-    for (const f of allFiles) fileLookup.set(f.name.toUpperCase(), f.location);
+    const fileLookup: Record<string, number> = {};
+    for (const f of allFiles) fileLookup[f.name.toUpperCase()] = f.location;
     
     //Allocate memory for the ROM
     this.writer.allocate(pages);
 
     // Write all files
-    for (const file of allFiles) {
-      await this.writer.writeFile(file, fileLookup);
-    }
+    for (const file of allFiles) await this.writer.writeFile(file, fileLookup);
 
     return masterLookup;
   }
 
-  public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[], masterLookup: Map<string, AsmBlock>): void {
+  public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[], masterLookup: Record<string, AsmBlock>): void {
     for (const patch of patches) { //.filter(x => x.includes && x.includes.size > 0)) {
       let file: ChunkFile | null = null;
       let dstIx = -1;
@@ -174,7 +167,7 @@ export class RomProcessor {
             adjust = label[adjustIx] === '+' ? 1 : -1;
             label = label.slice(0, adjustIx);
           }
-          match = masterLookup.get(label.toUpperCase());
+          match = masterLookup[label.toUpperCase()];
 
           // for (const i of inc) {
           //   if (!i.parts) continue;
@@ -197,7 +190,7 @@ export class RomProcessor {
             if(adjust > 0) dstIx++;
             file!.parts!.splice(dstIx++, 0, block);
           } else {
-            masterLookup.set(label!.toUpperCase(), block);
+            masterLookup[label!.toUpperCase()] = block;
             file!.parts![dstIx++] = block;
           }
         } else if (force || adjust !== 0) {

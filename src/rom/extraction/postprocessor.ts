@@ -102,7 +102,7 @@ export class PostProcessor {
         //Adjust highest key found
         if (key > endKey) endKey = key;
 
-        const name = `${entry.name}_${key.toString(16).toUpperCase().padStart(4, '0')}`;
+        const name = `${entry.name.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase()}_${key.toString(16).toUpperCase().padStart(4, '0')}`;
         
         const tableEntry = new TableEntry(entry.location, value, name);
 

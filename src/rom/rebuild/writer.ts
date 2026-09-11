@@ -31,14 +31,14 @@ export class RomWriter {
     this.root = root;
   }
 
-  public async repack(files: ChunkFile[], modules?: string[]): Promise<Uint8Array> {
+  public async repack(files: ChunkFile[], modules?: string[]): Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], romData: Uint8Array }> {
     const processor = new RebuildProcessor(this);
     const masterLookup = await processor.repack(files, modules);
 
     this.writeHeaders(masterLookup);
 
     //await this.generatePatch();
-    return this.outBuffer!;
+    return { masterLookup, files, romData: this.outBuffer! };
   }
 
   public allocate(pages: number): void {
@@ -56,7 +56,7 @@ export class RomWriter {
     this.outBuffer = new Uint8Array(size);
   }
 
-  public writeHeaders(masterLookup: Map<string, AsmBlock>): void {
+  public writeHeaders(masterLookup: Record<string, AsmBlock>): void {
     const values = this.prepareHeaderValues();
     for (const header of this.root.headers) {
       if(header.condition && !eval(header.condition)) continue;
@@ -77,7 +77,7 @@ export class RomWriter {
   }
 
 
-  public writeHeader(header: DbHeader, values: any, masterLookup: Map<string, AsmBlock>): void {
+  public writeHeader(header: DbHeader, values: any, masterLookup: Record<string, AsmBlock>): void {
     const buf = this.outBuffer!;
     
     let pos = new Address(header.bank, header.address, this.root.config.memoryMode).toLocation();
@@ -125,7 +125,7 @@ export class RomWriter {
         case 'entry':
           let location = 0;
           if(typeof value === 'string') {
-            location = value === '' ? 0 : masterLookup.get(value.toUpperCase())?.location ?? 0;
+            location = value === '' ? 0 : masterLookup[value.toUpperCase()]?.location ?? 0;
           } else if(typeof value === 'number') {
             location = value;
           }
@@ -284,7 +284,7 @@ export class RomWriter {
   //   }
   // }
 
-  public async writeFile(file: ChunkFile, fileLookup: Map<string, number>): Promise<number> {
+  public async writeFile(file: ChunkFile, fileLookup: Record<string, number>): Promise<number> {
     const start = file.location;
     let pos = start;
     const buf = this.outBuffer!;
@@ -351,7 +351,7 @@ export class RomWriter {
    * Parse assembly blocks and write binary data to output buffer
    * Converted from ext/GaiaLib/Rom/Rebuild/RomWriter.cs ParseAssembly method
    */
-  public static parseAssembly(root: DbRoot, blocks: AsmBlock[], fileLookup: Map<string, number>, includeLookup: Map<string, AsmBlock>, outBuffer: Uint8Array, addrOffset?: number): void {
+  public static parseAssembly(root: DbRoot, blocks: AsmBlock[], fileLookup: Record<string, number>, includeLookup: Record<string, AsmBlock>, outBuffer: Uint8Array, addrOffset?: number): void {
     if (!blocks) {
       throw new Error('Assembly has not been parsed');
     }
@@ -435,14 +435,10 @@ export class RomWriter {
 
             // Search local labels first
             const labelUpper = label.toUpperCase();
-            let target: AsmBlock | null = null;
+            const target = includeLookup[labelUpper];
 
-            if(includeLookup.has(labelUpper)) {
-              target = includeLookup.get(labelUpper)!;
-              loc = target.location;
-            } else if(fileLookup.has(labelUpper)) {
-              loc = fileLookup.get(labelUpper)!;
-            } else {
+            if (target) loc = target.location;
+            else if ((loc = fileLookup[labelUpper] ?? -1) < 0) {
               // Handle direct hex values
               if (label.startsWith('#')) {
                 label = label.substring(1);

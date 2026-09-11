@@ -69,7 +69,7 @@ export class TypeParser {
     const isPtr = addrType !== AddressType.Unknown;
 
     // Parse raw values
-    let mType = isPtr ? addrType : this.tryParseMemberType(fixedTypeName);
+    let mType = isPtr ? addrType : TypeParser.tryParseMemberType(fixedTypeName);
     if (mType !== null) {
       fixedTypeName = isPtr ? fixedTypeName.substring(1) : '';
       const transform = this._blockReader._transformProcessor.getTransform();
@@ -219,7 +219,7 @@ export class TypeParser {
     else return objects;
   }
 
-  private tryParseMemberType(memberTypeName: string): MemberType | null {
+  public static tryParseMemberType(memberTypeName: string): MemberType | null {
     // Check if the string matches any MemberType enum value (case-insensitive)
     const upperName = memberTypeName.toUpperCase();
     for (const [key, value] of Object.entries(MemberType)) {

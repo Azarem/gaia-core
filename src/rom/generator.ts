@@ -87,7 +87,7 @@ export class RomGenerator {
     const romWriter = new RomWriter(this.dbRoot);
     const outRom = await romWriter.repack(chunkFiles, modules);
 
-    return outRom;
+    return outRom.romData;
   }
 
   private applyProjectInit(chunkFiles: ChunkFile[], asmFiles: ChunkFile[], patchFiles: ChunkFile[]){

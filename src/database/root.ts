@@ -23,6 +23,7 @@ import { BlockWriter } from '../rom/extraction/writer';
 import { BlockReader } from '../rom/extraction/blocks';
 import { RomWriter } from '../rom/rebuild/writer';
 import { DbHeader } from './header';
+import { AsmBlock } from '../types/assembly';
 
 /**
  * Main database root class
@@ -394,17 +395,16 @@ export class DbRootUtils {
     }
   }
 
-  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) : Promise<ChunkFile[]> {
+  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) : Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], romData: Uint8Array }> {
     var sourceFiles: ChunkFile[] = [];
-    for(const path of inPath) {
-      sourceFiles = await this.applyFolder(root, path, sourceFiles);
-    }
+    
+    for(const path of inPath) sourceFiles = await this.applyFolder(root, path, sourceFiles);
 
     const romWriter = new RomWriter(root);
     const outData = await romWriter.repack(sourceFiles);
-    await saveFileAsBinary(outPath, outData);
+    await saveFileAsBinary(outPath, outData.romData);
 
-    return sourceFiles;
+    return outData;
   }
 
 

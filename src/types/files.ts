@@ -18,7 +18,7 @@ export class ChunkFile {
   type: DbFileType;
   parts?: AsmBlock[];
   includes?: Set<string>;
-  includeLookup?: Map<string, AsmBlock>;
+  includeLookup?: Record<string, AsmBlock>;
   bank?: number;
   compressed?: boolean;
   upper?: boolean;

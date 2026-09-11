@@ -1,7 +1,8 @@
-import { Byte, RomProcessingConstants, AsmBlock, Op, Word, Long } from '../../types';
+import { Byte, RomProcessingConstants, AsmBlock, Op, Word, Long, MemberType } from '../../types';
 import { DbRoot, DbStruct, OpCode } from '../../database';
 import type { Assembler } from './assembler';
 import { AsmReader } from '../extraction/asm';
+import { TypeParser } from '../extraction';
 
 /**
  * Assembler state machine for processing assembly text
@@ -27,16 +28,20 @@ export class AssemblerState {
     this.root = context.root;
     this.openTag = openTag;
 
-    if (openTag === '<') {
-      if (!structType) throw new Error(`Struct type required for < tag.`);
-
-      structType = structType.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
-      this.dbStruct = this.root.structs[structType];
-      if (!this.dbStruct) throw new Error(`Unknown struct type: ${structType}`);
-  
-      const parentName = this.dbStruct.parent?.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
-      this.parentStruct = this.root.structs[parentName ?? ''];
-      if (parentName && !this.parentStruct) throw new Error(`Unknown parent struct type: ${parentName}`);
+    if (structType) {
+      const cleanedType = structType.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
+      this.dbStruct = this.root.structs[cleanedType];
+      if (!this.dbStruct) {
+        if (openTag === '<' || !TypeParser.tryParseMemberType(structType)) {
+          throw new Error(`Unknown struct type: ${structType}`);
+        }
+      } else {
+        const parentName = this.dbStruct.parent?.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
+        this.parentStruct = this.root.structs[parentName ?? ''];
+        if (parentName && !this.parentStruct) throw new Error(`Unknown parent struct type: ${parentName}`);
+      }
+    } else if (openTag === '<') {
+      throw new Error(`Struct type required for < tag.`);
     }
 
     this.discriminator = this.parentStruct?.discriminator;
