@@ -395,9 +395,10 @@ export class DbRootUtils {
     }
   }
 
-  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) : Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], romData: Uint8Array }> {
+  public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) 
+  : Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], header: any, romData: Uint8Array }> {
     var sourceFiles: ChunkFile[] = [];
-    
+
     for(const path of inPath) sourceFiles = await this.applyFolder(root, path, sourceFiles);
 
     const romWriter = new RomWriter(root);

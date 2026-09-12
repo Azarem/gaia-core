@@ -15,6 +15,7 @@ export class DbBlock {
   public postProcess?: string;
   public order?: number;
   public base?: number;
+  public location: number;
   //public id?: string;
 
   constructor(data: Partial<DbBlock>) {
@@ -27,6 +28,7 @@ export class DbBlock {
       const orderB = b.order ?? b.start ?? 0;
       return orderA - orderB;
     });
+    this.location = this.parts[0].start;
     this.transforms = data.transforms ?? [];
     this.postProcess = data.postProcess ?? undefined;
     this.order = data.order ?? undefined;

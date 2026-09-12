@@ -90,7 +90,7 @@ export class ReferenceManager {
   }
 
   public createTypeName(type: string, location: number): string {
-    let name = type.replaceAll('-', '_').toLowerCase();
+    let name = type.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
     const isSoft = name[0] === '~';
     if(isSoft) name = name.substring(1);
     const isRaw = name[name.length - 1] === '!';
@@ -172,7 +172,7 @@ export class ReferenceManager {
 
     if (name[0] === '~') name = name.substring(1);
 
-    const blockName = targetBlock && targetBlock.name !== block?.name && targetBlock.name !== name ? targetBlock.name + '.' : '';
+    const blockName = targetBlock && targetBlock.name !== block?.name && (targetBlock.location !== location || targetBlock.name !== name) ? targetBlock.name + '.' : '';
     
     return `${prefix || ''}${blockName}${name}${label || ''}`;
   }

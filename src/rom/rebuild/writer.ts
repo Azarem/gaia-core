@@ -31,14 +31,15 @@ export class RomWriter {
     this.root = root;
   }
 
-  public async repack(files: ChunkFile[], modules?: string[]): Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], romData: Uint8Array }> {
+  public async repack(files: ChunkFile[], modules?: string[])
+  : Promise<{ masterLookup: Record<string, AsmBlock>, files: ChunkFile[], header: any, romData: Uint8Array }> {
     const processor = new RebuildProcessor(this);
     const masterLookup = await processor.repack(files, modules);
 
-    this.writeHeaders(masterLookup);
+    const header = this.writeHeaders(masterLookup);
 
     //await this.generatePatch();
-    return { masterLookup, files, romData: this.outBuffer! };
+    return { masterLookup, files, header, romData: this.outBuffer! };
   }
 
   public allocate(pages: number): void {
@@ -56,13 +57,14 @@ export class RomWriter {
     this.outBuffer = new Uint8Array(size);
   }
 
-  public writeHeaders(masterLookup: Record<string, AsmBlock>): void {
+  public writeHeaders(masterLookup: Record<string, AsmBlock>): any {
     const values = this.prepareHeaderValues();
     for (const header of this.root.headers) {
       if(header.condition && !eval(header.condition)) continue;
       this.writeHeader(header, values, masterLookup);
     }
     this.writeChecksum(values);
+    return values;
   }
 
   public prepareHeaderValues(): any {
@@ -185,27 +187,8 @@ export class RomWriter {
       }
     }
   
-    // const buf = this.outBuffer!;
-    // let pos = new Address(0, 0xFFDC, this.root.config.memoryMode).toLocation();
-    
-    // //Zero out the checksum location
-    // buf[pos] = 0xFF;
-    // buf[pos + 1] = 0xFF;
-    // buf[pos + 2] = 0;
-    // buf[pos + 3] = 0;
-
-    // // checksum
-    // let sum = 0;
-    // for (let i = 0; i < buf.length; i++) sum += buf[i];
-
-    // // complement at 0xFFDC
-    // const comp = ~sum;
-    // buf[pos] = comp & 0xFF;
-    // buf[pos + 1] = (comp >> 8) & 0xFF;
-
-    // // checksum at 0xFFDE
-    // buf[pos + 2] = sum & 0xFF;
-    // buf[pos + 3] = (sum >> 8) & 0xFF;
+    values.checksum = sum;
+    values.compliment = comp;
   }
 
   // private async generatePatch(): Promise<void> {

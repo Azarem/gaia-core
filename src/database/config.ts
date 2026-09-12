@@ -25,4 +25,5 @@ export interface DbConfig {
   defaultBank?: number;
   oddLocationBase?: number;
   oddLocationSpan?: number;
+  emitLineTracking?: boolean;
 } 

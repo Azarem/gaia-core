@@ -458,6 +458,7 @@ export class BlockWriter {
 
       const comment = this._root.comments[op.location];
       if (comment) opLine = opLine.padEnd(25, ' ') + ` ; ${comment}`;
+      else if (this._root.config.emitLineTracking) opLine += ` ; {${op.location}}`;
       
       lines.push(opLine);
     }
