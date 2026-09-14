@@ -1,16 +1,20 @@
 # Notes and Comments System
 
-The GaiaLabs engine provides a three-tier annotation system for documenting disassembled ROM code. Annotations are stored as JSON files in the baserom project's `db-us/` (or `db-jp/`) folder and are **inserted into the extracted `.asm` files during extraction**. They are not embedded in the ROM itself — they live alongside the database triad (`blocks.json`, `overrides.json`, `names.json`) as a documentation layer.
+The GaiaLabs engine provides a three-tier annotation system for documenting disassembled ROM code. Annotations are stored as JSON files in a `notes/` directory at the **baserom project root** and are **inserted into the extracted `.asm` files during extraction**. They are not embedded in the ROM itself — they live alongside the database triad (`blocks.json`, `overrides.json`, `names.json`) as a documentation layer.
+
+**Notes are local-only.** The `notes/` directory is excluded from the npm package (`package.json` `files` field does not include it). When the baserom is installed as a dependency via npm, no notes are present and the module operates without them. When the repo is cloned locally, the `notes/` directory is available and the module loads all annotations at startup via filesystem discovery. This keeps the published package lightweight while giving local contributors full documentation in their extracted `.asm` files.
 
 During **rebuild**, the assembler strips all comments (`;`, `--`, `//` prefixes) from `.asm` source before processing. This means annotations are write-once into JSON, injected on extraction, and harmlessly ignored on rebuild — the extracted `.asm` files are always the authoritative view of both code and documentation.
 
 ## The Three Tiers
 
-### 1. Block Notes (`blockNotes.json`)
+### 1. Block Notes (`notes/blockNotes/`)
 
 **Scope:** One note per code/data block (the top-level organizational unit).
 
-**File format:** A flat JSON object mapping block names (matching keys in `blocks.json`) to multi-line documentation strings:
+**Location:** `notes/blockNotes/bankNN.json` — one file per ROM bank, where `NN` is the two-digit hex bank number (e.g., `bank00.json`, `bank02.json`, `bank03.json`).
+
+**File format:** Each bank file is a flat JSON object mapping block names (matching keys in `blocks.json`) to multi-line documentation strings:
 
 ```json
 {
@@ -50,11 +54,13 @@ if (notes?.length > 0) {
 - Document key data structures, flag bitmasks, and algorithmic patterns
 - Reference related blocks and routines by name and address
 
-### 2. Part Notes (`partNotes.json`)
+### 2. Part Notes (`notes/partNotes/`)
 
 **Scope:** One note per named routine or data table within a block.
 
-**File format:** A flat JSON object mapping part/routine names (matching entries in `names.json` or auto-generated `code_XXXXXX` labels) to documentation strings:
+**Location:** `notes/partNotes/bankNN.json` — one file per ROM bank, matching the block notes bank structure.
+
+**File format:** Each bank file is a flat JSON object mapping part/routine names (matching entries in `names.json` or auto-generated `code_XXXXXX` labels) to documentation strings:
 
 ```json
 {
@@ -116,11 +122,13 @@ if (notes?.length > 0) {
 - Document flag bitmasks and their meanings when the routine tests or sets them
 - Reference related routines by name
 
-### 3. Line Comments (`comments/` or `comments.json`)
+### 3. Line Comments (`notes/comments/`)
 
 **Scope:** One comment per individual opcode/instruction, keyed by decimal ROM address.
 
-**File format:** A flat JSON object mapping decimal ROM addresses (as string keys) to comment strings:
+**Location:** `notes/comments/bankNN.json` — one file per ROM bank.
+
+**File format:** Each bank file is a flat JSON object mapping decimal ROM addresses (as string keys) to comment strings:
 
 ```json
 {
@@ -213,72 +221,89 @@ Instruction sizes depend on the 65C816 register mode:
 
 The M flag (set by `SEP #$20`, cleared by `REP #$20`) determines whether immediate accumulator operations are 2 or 3 bytes. The X flag (set by `SEP #$10`, cleared by `REP #$10`) does the same for index register operations.
 
-## Comment File Splitting
+## Notes Directory Structure
 
-Comments can be stored in a single `comments.json` file or **split into per-bank files** in a `comments/` subdirectory. This is useful for keeping individual file line counts manageable as documentation coverage grows.
-
-### Single-file layout
+All three annotation tiers are stored in a `notes/` directory at the baserom project root, split by ROM bank:
 
 ```
-db-us/
-  comments.json          ← all comments in one file
+<baserom-root>/
+  notes/
+    blockNotes/
+      bank00.json        ← block notes for Bank 00 blocks
+      bank02.json        ← block notes for Bank 02 blocks
+      bank03.json        ← block notes for Bank 03 blocks
+    partNotes/
+      bank00.json        ← part notes for Bank 00 routines
+      bank02.json        ← part notes for Bank 02 routines
+      bank03.json        ← part notes for Bank 03 routines
+    comments/
+      bank00.json        ← inline comments for Bank 00 addresses (32768–65535)
+      bank02.json        ← inline comments for Bank 02 addresses (163840–196607)
+      bank03.json        ← inline comments for Bank 03 addresses (229376–262143)
 ```
 
-### Split layout (per-bank files)
+### Bank assignment
 
-```
-db-us/
-  comments/
-    comments_bank0.json  ← comments for Bank 00 addresses (32768–65535)
-    comments_bank2.json  ← comments for Bank 02 addresses (131072–196607)
-    comments_bank3.json  ← comments for Bank 03 addresses (196608–262143)
-```
+Each annotation goes into the bank file corresponding to the code it documents:
 
-### How splitting works
+- **Block notes:** The bank is determined by the block's start address in `blocks.json`. For blocks without a direct `start` field (only nested `parts`), use the bank of the first part.
+- **Part notes:** The bank is determined by the routine's address in `names.json`. For routines within a block, they share the block's bank.
+- **Comments:** The bank is determined directly from the decimal ROM address key. Bank = floor(address / 65536).
 
-The baserom project's `src/index.ts` imports each bank file individually and merges them with the spread operator when constructing the `DbGameRomModule`:
+| Bank | Address range (decimal) | Address range (hex) |
+|------|------------------------|---------------------|
+| 00 | 32768–65535 | $008000–$00FFFF |
+| 01 | 98304–131071 | $018000–$01FFFF |
+| 02 | 163840–196607 | $028000–$02FFFF |
+| 03 | 229376–262143 | $038000–$03FFFF |
+
+### How loading works
+
+The baserom project's `src/index.ts` discovers and loads notes at runtime via filesystem check:
 
 ```typescript
-import comments0 from '../db-us/comments/comments_bank0.json' with { type: 'json' };
-import comments2 from '../db-us/comments/comments_bank2.json' with { type: 'json' };
-import comments3 from '../db-us/comments/comments_bank3.json' with { type: 'json' };
+function loadNotesDir(subdir: string): Record<string, string> {
+    const dir = join(__pkgRoot, 'notes', subdir);
+    if (!existsSync(dir)) return {};
+
+    const merged: Record<string, string> = {};
+    for (const file of readdirSync(dir)) {
+        if (!file.endsWith('.json')) continue;
+        const data = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
+        Object.assign(merged, data);
+    }
+    return merged;
+}
+
+const localNotes = loadLocalNotes();
 
 export const db: DbGameRomModule = {
     // ...
-    comments: { ...comments0, ...comments2, ...comments3 },
-    // ...
+    comments: localNotes.comments,
+    blockNotes: localNotes.blockNotes,
+    partNotes: localNotes.partNotes,
 };
 ```
 
-The engine itself (`DbRootUtils.fromGameModule()` in `src/database/root.ts`) receives the already-merged dictionary and stores it as a flat `Record<number, string>`:
+The loader reads **all** `.json` files in each subdirectory and merges them into a single flat dictionary. The engine itself (`DbRootUtils.fromGameModule()` in `src/database/root.ts`) receives the already-merged dictionary and stores it as a flat `Record<string, string>`:
 
 ```typescript
 comments: module.comments ?? {},
+blockNotes: module.blockNotes ?? {},
+partNotes: module.partNotes ?? {},
 ```
 
 This means:
 - **The engine does not know or care about the file split** — it only sees the merged dictionary
-- **New bank files** can be added by creating a new JSON file in `comments/` and adding an import + spread entry in `src/index.ts`
-- **The split is purely organizational** — any comment can go in any file, though by convention each file covers one ROM bank
-- **There is no duplication risk** as long as each address appears in only one bank file
-
-### When to split
-
-- A single `comments.json` works fine for small annotation sets or the JP database
-- Split into bank files when total comment count exceeds ~500–1000 entries to keep individual files navigable in an editor
-- The IOG US database currently uses three bank files (bank 0, bank 2, bank 3) totaling ~2,200 comments
+- **New bank files are auto-discovered** — just create `notes/blockNotes/bank04.json` and it will be loaded on the next extraction. No code changes required.
+- **The split is purely organizational** — any entry can go in any file, though by convention each file covers one ROM bank
+- **There is no duplication risk** as long as each key appears in only one bank file
+- **When installed via npm** — the `notes/` directory is absent (excluded by `package.json` `files`), so all three fields default to `{}`. The module operates without annotations.
 
 ### Adding a new bank file
 
-1. Create `db-us/comments/comments_bankN.json` with an empty object `{}`
-2. In `src/index.ts`, add the import:
-   ```typescript
-   import commentsN from '../db-us/comments/comments_bankN.json' with { type: 'json' };
-   ```
-3. Add it to the spread in the module export:
-   ```typescript
-   comments: { ...comments0, ...comments2, ...comments3, ...commentsN },
-   ```
+1. Create `notes/blockNotes/bankNN.json`, `notes/partNotes/bankNN.json`, and/or `notes/comments/bankNN.json` with an empty object `{}`
+2. That's it — the filesystem loader auto-discovers all `.json` files in each subdirectory. No imports or code changes needed.
 
 ## Module Interface
 
@@ -332,17 +357,17 @@ The `names.json` file provides the label names that both part notes and comments
 - **Comments** are keyed by the decimal address (e.g., `"244708"`) — this is the same address space as `names.json` keys
 - **Block notes** are keyed by the block name from `blocks.json` (e.g., `"combat_collision"`)
 
-When documenting a block, all three files should be updated together to maintain consistency.
+When documenting a block, all three note types should be updated together in their respective `bankNN.json` files to maintain consistency.
 
 ## Summary
 
-| Tier | File | Key Type | Value | Insertion Point |
-|------|------|----------|-------|-----------------|
-| Block | `blockNotes.json` | Block name (string) | Multi-line documentation | Top of `.asm` file, before `?BANK` |
-| Part | `partNotes.json` | Routine label (string) | Multi-line documentation | Before routine label in `.asm` |
-| Line | `comments/*.json` | Decimal ROM address (string) | Single-line comment | End of instruction line, padded to col 25 |
+| Tier | Directory | Key Type | Value | Insertion Point |
+|------|-----------|----------|-------|-----------------|
+| Block | `notes/blockNotes/bankNN.json` | Block name (string) | Multi-line documentation | Top of `.asm` file, before `?BANK` |
+| Part | `notes/partNotes/bankNN.json` | Routine label (string) | Multi-line documentation | Before routine label in `.asm` |
+| Line | `notes/comments/bankNN.json` | Decimal ROM address (string) | Single-line comment | End of instruction line, padded to col 25 |
 
-All three are injected during extraction, stripped during rebuild, and stored as plain JSON alongside the database triad.
+All three are injected during extraction, stripped during rebuild, and stored as plain JSON in the `notes/` directory at the baserom project root. The `notes/` directory is excluded from the npm package — annotations are only available in local/cloned repos.
 
 ---
 
@@ -606,12 +631,13 @@ The recommended process for annotating a new block:
 
 1. **Read the standard extraction** — run `npm run extract` and read the entire `.asm` file end-to-end without writing anything. Understand the code's structure, routines, and relationships.
 2. **Run location-tagged extraction** — run `npm run extract:lt` to produce address-tagged output. Every uncommented instruction now shows its decimal ROM address as `; {address}`.
-3. **Write the block note** — architecture, data formats, WRAM variables. Add to `blockNotes.json`.
-4. **Write part notes** for each routine — purpose, parameters, algorithm. Add to `partNotes.json`.
-5. **Write inline comments** — read the `extract:lt` output and use the visible `; {address}` tags as JSON keys. No manual address computation needed.
-6. **Audit part names** — verify that `names.json` labels accurately describe each routine.
-7. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
-8. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
+3. **Determine the bank** — identify which ROM bank the block lives in (bank = floor(start_address / 65536)).
+4. **Write the block note** — architecture, data formats, WRAM variables. Add to `notes/blockNotes/bankNN.json`.
+5. **Write part notes** for each routine — purpose, parameters, algorithm. Add to `notes/partNotes/bankNN.json`.
+6. **Write inline comments** — read the `extract:lt` output and use the visible `; {address}` tags as JSON keys. Add to `notes/comments/bankNN.json`.
+7. **Audit part names** — verify that `names.json` labels accurately describe each routine.
+8. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
+9. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
 
 > **Why two extraction passes?** The first pass (standard) lets you read the code without visual noise from address tags. The second pass (`extract:lt`) reveals every instruction's address so you can write comment JSON keys accurately. The final verification pass (standard again) confirms the comments appear correctly and flow naturally.
 
@@ -721,7 +747,7 @@ The JSON-keyed annotation system enables straightforward automated validation. T
 
 **1. Comment address validation (`validate:comments`)**
 
-Check every key in `comments_bankN.json` against the set of valid instruction addresses from the ROM analysis. Catches:
+Check every key in `notes/comments/bankNN.json` against the set of valid instruction addresses from the ROM analysis. Catches:
 - Stale comments pointing at addresses where instructions no longer exist (e.g., after `blocks.json` changes)
 - Comments pointing at data/string addresses instead of instructions
 - Duplicate keys across bank files
@@ -735,14 +761,14 @@ for each address in comments.keys():
 
 **2. Part note name validation (`validate:partNotes`)**
 
-Check every key in `partNotes.json` against the union of `names.json` values and auto-generated `code_XXXXXX` labels. Catches:
+Check every key in `notes/partNotes/bankNN.json` against the union of `names.json` values and auto-generated `code_XXXXXX` labels. Catches:
 - Typos in routine names (e.g., `"UseItem_Redjewel"` vs `"UseItem_RedJewel"`)
 - Part notes for routines that were renamed or removed
 - Missing part notes for named routines (coverage report)
 
 **3. Block note name validation (`validate:blockNotes`)**
 
-Check every key in `blockNotes.json` against `blocks.json` keys. Simpler than part notes since block names change less often.
+Check every key in `notes/blockNotes/bankNN.json` against `blocks.json` keys. Simpler than part notes since block names change less often.
 
 **4. Comment density metrics**
 
@@ -781,7 +807,7 @@ The current workflow requires the agent to:
 
 An optimized flow could provide the agent with a **diff-oriented view** — only showing uncommented instructions in complex routines, with surrounding context. This would reduce the amount of text the agent needs to process when annotating a file that's partially documented.
 
-Another option: a tool that accepts comments in a more natural format (e.g., inline in the ASM after the `; {address}` tag) and converts them to JSON. The agent could edit the `extract:lt` output directly, replacing `; {230620}` with `; BCD mode: packed decimal`, and a converter would parse the file and produce the corresponding `comments_bankN.json` entries. This would eliminate the JSON key-value authoring step entirely.
+Another option: a tool that accepts comments in a more natural format (e.g., inline in the ASM after the `; {address}` tag) and converts them to JSON. The agent could edit the `extract:lt` output directly, replacing `; {230620}` with `; BCD mode: packed decimal`, and a converter would parse the file and produce the corresponding `notes/comments/bankNN.json` entries. This would eliminate the JSON key-value authoring step entirely.
 
 ### Checklist: Annotating a New Block
 
@@ -789,10 +815,11 @@ Quick reference for the complete annotation workflow:
 
 - [ ] Run `npm run extract` and read the entire `.asm` file
 - [ ] Identify all routines and their relationships
-- [ ] Write the block note in `blockNotes.json`
-- [ ] Write part notes for all named routines in `partNotes.json`
+- [ ] Determine the bank number (floor(start_address / 65536)) — all notes go in `bankNN.json` files
+- [ ] Write the block note in `notes/blockNotes/bankNN.json`
+- [ ] Write part notes for all named routines in `notes/partNotes/bankNN.json`
 - [ ] Run `npm run extract:lt` to get address-tagged output
-- [ ] Write inline comments in the appropriate `comments_bankN.json`, using `; {address}` values as keys
+- [ ] Write inline comments in `notes/comments/bankNN.json`, using `; {address}` values as keys
 - [ ] Verify `names.json` labels match part note keys exactly
 - [ ] Run `npm run extract` (standard) and review the final output
 - [ ] Read the file top-to-bottom as a consumer — does it flow? Are the comments helpful without being noisy?
@@ -805,6 +832,6 @@ Quick reference for verifying existing annotations:
 - [ ] For each commented line, verify the adjacent `; {address}` tags form a consistent sequence (no gaps or overlaps)
 - [ ] Check that comments on independent instructions describe only their own operation (no multi-instruction descriptions on single COP commands)
 - [ ] Verify part note keys match `names.json` labels exactly (case-sensitive)
-- [ ] Check that block note key matches the block name in `blocks.json`
+- [ ] Check that block note key matches the block name in `blocks.json` and is in the correct bank file
 - [ ] Look for `; {address}` tags in complex routines — these are uncommented lines that may need annotation
 - [ ] Re-read comments as a consumer — do they add value? Are any just restating the instruction?
