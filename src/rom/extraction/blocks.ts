@@ -484,8 +484,7 @@ export class BlockReader {
       if(!chunkFile.struct || !chunkFile.compressed) continue;
       this._currentChunk = chunkFile;
 
-      const asmBlock = new AsmBlock(0, chunkFile.size, false, chunkFile.name, chunkFile.struct);
-      asmBlock.file = chunkFile;
+      const asmBlock = new AsmBlock(chunkFile, 0, chunkFile.size, chunkFile.name, chunkFile.struct);
       chunkFile.parts = [asmBlock];
       this._currentAsmBlock = asmBlock;
       this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);

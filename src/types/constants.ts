@@ -18,9 +18,10 @@ export class RomProcessingConstants {
   public static readonly COMMA_SPACE = [',', ' ', '\t'];
   public static readonly ADDRESS_SPACE = ['@', '&', '^', '#', '$', '%', '*', '!'];
   public static readonly SYMBOL_SPACE = [',', ' ', '\t', '<', '>', '(', ')', ':', '[', ']', '{', '}', '`', '~', '|'];
-  public static readonly LABEL_SPACE = ['[', '{', '#', '`', '~', '|', ':', '$', '&', '^', '*'];
+  public static readonly LABEL_SPACE = ['[', '{', '#', '`', '~', '|', ':', '&', '^', '*'];
   public static readonly OBJECT_SPACE = ['<', '['];
   public static readonly COP_SPLIT_CHARS = [' ', '\t', ',', '(', ')', '[', ']', '$', '#'];
+  public static readonly OVERRIDE_CHARS = ['!', '+', '-'];
 
   // Pre-compiled regular expressions for parsing
   public static readonly WHITESPACE_REGEX = /[ \t]/;

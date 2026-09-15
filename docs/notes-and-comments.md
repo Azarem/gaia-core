@@ -379,7 +379,7 @@ This section provides detailed guidance for agents (and humans) creating inline 
 
 **Never decide on a comment count before reading the code.** Always read the entire file (or the entire address range) from start to finish before writing a single comment. The code's complexity should dictate the comment density — not a predetermined target.
 
-A simple routine like `WideCmd_JumpToAddress` (read 2 bytes into Y, return) needs at most one comment. A complex routine like `WideCmd_PrintNumber` (stack frame, nested loops, nibble extraction, leading zero suppression) needs 15+. Let the code determine what's necessary.
+A simple routine like `DialogCmd_JumpToAddress` (read 2 bytes into Y, return) needs at most one comment. A complex routine like `DialogCmd_PrintNumber` (stack frame, nested loops, nibble extraction, leading zero suppression) needs 15+. Let the code determine what's necessary.
 
 ### Philosophy: What Comments Should Convey
 
@@ -580,7 +580,7 @@ LSR
 
 ### Stack Frame Documentation
 
-For routines that use the stack as a data structure (like `WideCmd_PrintNumber`), document what each SP-relative offset holds:
+For routines that use the stack as a data structure (like `DialogCmd_PrintNumber`), document what each SP-relative offset holds:
 
 ```
 ; Allocate 6-word stack frame for loop state

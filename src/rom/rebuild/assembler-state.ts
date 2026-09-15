@@ -84,28 +84,27 @@ export class AssemblerState {
     }
   }
 
-  private processOrigin(): void {
-    this.context.lineBuffer = this.context.lineBuffer.substring(3).replace(/^[\s,\t]+/, '');
-    if (this.context.lineBuffer.startsWith('$')) {
-      this.context.lineBuffer = this.context.lineBuffer.substring(1);
-    }
+  // private processOrigin(): void {
+  //   this.context.lineBuffer = this.context.lineBuffer.substring(3).replace(/^[\s,\t]+/, '');
+  //   if (this.context.lineBuffer.startsWith('$')) {
+  //     this.context.lineBuffer = this.context.lineBuffer.substring(1);
+  //   }
 
-    let hex: string;
-    const endIx = this.context.lineBuffer.search(/[\s,\t]/);
-    if (endIx >= 0) {
-      hex = this.context.lineBuffer.substring(0, endIx);
-      this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1).replace(/^[\s,\t]+/, '');
-    } else {
-      hex = this.context.lineBuffer;
-      this.context.lineBuffer = '';
-    }
+  //   let hex: string;
+  //   const endIx = this.context.lineBuffer.search(/[\s,\t]/);
+  //   if (endIx >= 0) {
+  //     hex = this.context.lineBuffer.substring(0, endIx);
+  //     this.context.lineBuffer = this.context.lineBuffer.substring(endIx + 1).replace(/^[\s,\t]+/, '');
+  //   } else {
+  //     hex = this.context.lineBuffer;
+  //     this.context.lineBuffer = '';
+  //   }
 
-    const location = parseInt(hex, 16);
+  //   const location = parseInt(hex, 16);
 
-    this.context.blocks.push(this.context.currentBlock = new AsmBlock(location));
-    this.context.currentBlock!.file = this.context.file;
-    //this.context.blockIndex++;
-  }
+  //   this.context.blocks.push(this.context.currentBlock = new AsmBlock(this.context.file, location));
+  //   //this.context.blockIndex++;
+  // }
 
   private static doMath(operand: string): string {
     const ix = operand.search(/[-+]/);
@@ -147,12 +146,13 @@ export class AssemblerState {
 
     // Create new block for this label
     const newBlock = new AsmBlock(
+      this.context.file,
       this.context.currentBlock!.location + this.context.currentBlock!.size,
       0,
-      this.root.stringDelimiters.includes(operand[0]),
-      mnemonic
+      mnemonic,
+      //undefined,
+      //this.root.stringDelimiters.includes(operand[0])
     );
-    newBlock.file = this.context.file;
     // const conditionBlock = this.context.conditionBlock;
     // if(conditionBlock) {
     //   conditionBlock.objList.push(newBlock);
@@ -247,11 +247,11 @@ export class AssemblerState {
           if (this.delimiter != null) {
             if (this.delimiter >= 0x100) {
               // When over the word boundary use two bytes
-              this.context.currentBlock!.objList.push(this.delimiter);
+              this.context.currentBlock!.objList.push(new Word(this.delimiter, true));
               this.context.currentBlock!.size += 2;
             } else {
               // Otherwise default to single byte
-              this.context.currentBlock!.objList.push(this.delimiter);
+              this.context.currentBlock!.objList.push(new Byte(this.delimiter, true));
               this.context.currentBlock!.size += 1;
             }
           }
@@ -284,11 +284,11 @@ export class AssemblerState {
           continue;
         }
 
-        // Process origin tags
-        if (this.context.lineBuffer.startsWith('ORG')) {
-          this.processOrigin();
-          continue;
-        }
+        // // Process origin tags
+        // if (this.context.lineBuffer.startsWith('ORG')) {
+        //   this.processOrigin();
+        //   continue;
+        // }
 
         // Separate instructions into mnemonic and operand parts
         const symbolIndex = this.context.lineBuffer.search(RomProcessingConstants.SYMBOL_SPACE_REGEX);
@@ -351,6 +351,14 @@ export class AssemblerState {
           this.context.currentBlock!.size++;
           continue;
         }
+        
+        const operandParts = operand.split(/[\s\t,()[\]#$&+-]/).filter(p => p.length > 0);
+
+        for(let i = 0; i < operandParts.length; i++) {
+          const part = operandParts[i];
+          let mnemonicStr = this.context.tags[part] ?? this.root.mnemonicsLookup[part];
+          if (mnemonicStr) operand = operand.replace(part, mnemonicStr);
+        }
 
         // COP processing
         let opCode: OpCode | null = codes[0];
@@ -400,14 +408,6 @@ export class AssemblerState {
           this.context.currentBlock!.objList.push(new Op(opCode, 0, operands, size));
           this.context.currentBlock!.size += size;
           continue;
-        }
-
-        const operandParts = operand.split(/[\s\t,()[\]#$&+-]/).filter(p => p.length > 0);
-
-        for(let i = 0; i < operandParts.length; i++) {
-          const part = operandParts[i];
-          let mnemonicStr = this.context.tags[part] ?? this.root.mnemonicsLookup[part];
-          if (mnemonicStr) operand = operand.replace(part, mnemonicStr);
         }
 
         operand = AssemblerState.doMath(operand);

@@ -33,24 +33,26 @@ export class AsmBlock {
   public label?: string;
   public location: number;
   public size: number;
-  public isString: boolean;
+  //public isString: boolean;
   public objList: any[];
   public structName?: string;
   public includes?: Set<{block: ChunkFile, part: AsmBlock}>;
-  public file?: ChunkFile;
+  public file: ChunkFile;
 
   constructor(
+    file: ChunkFile,
     location: number = 0,
     size: number = 0,
-    isString: boolean = false,
     label?: string,
     structName?: string,
-    bank?: number
+    //isString: boolean = false,
+    //bank?: number
   ) {
+    this.file = file;
     this.label = label;
     this.location = location;
     this.size = size;
-    this.isString = isString;
+    //this.isString = isString;
     this.objList = [];
     this.structName = structName;
     this.includes = new Set();

@@ -2,7 +2,7 @@ import { BinType } from '../../types/resources';
 import { ChunkFileUtils, type ChunkFile } from '../../types/files';
 import { RomLayout } from './layout';
 import { RomWriter } from './writer';
-import { Assembler } from '../..';
+import { Assembler, RomProcessingConstants } from '../..';
 import { DbRoot } from '../../database';
 import { AsmBlock } from '../../types/assembly';
 
@@ -108,12 +108,18 @@ export class RomProcessor {
       for (const b of f.parts!) {
         let label = b.label;
         if (label) {
-          //const lastChar = label[label.length - 1];
-          //const isOverride = lastChar === '!' || lastChar === '+' || lastChar === '-';
-          //if (label[label.length - 1] === '!') label = label.slice(0, -1);
+          const isOverride = f.type.isPatch && RomProcessingConstants.OVERRIDE_CHARS.includes(label[label.length - 1]);
+          if(isOverride) label = label.slice(0, -1);
+
           label = label.toUpperCase();
-          if(masterLookup[label]) throw new Error(`Duplicate label: ${b.label}`);
-          masterLookup[label] = b;
+          if (masterLookup[label]) {
+            if (!isOverride) throw new Error(`Duplicate label in ${f.name}: ${label}`);
+          } else if (isOverride) {
+            //This will be handled by the patch processor
+            //throw new Error(`Label not found to override in ${f.name}: ${label}`);
+          } else {
+            masterLookup[label] = b;
+          }
           //f.includeLookup.set(label, b);
         }
       }
@@ -146,63 +152,71 @@ export class RomProcessor {
   }
 
   public static applyPatches(asmFiles: ChunkFile[], patches: ChunkFile[], masterLookup: Record<string, AsmBlock>): void {
-    for (const patch of patches) { //.filter(x => x.includes && x.includes.size > 0)) {
-      let file: ChunkFile | null = null;
+    for (const patch of patches) {
+      if(!patch.parts) continue;
+
+
+      //Separate top level code from the rest of the patch
+      let topIx = 0;
+      while (topIx < patch.parts.length) {
+        const label = patch.parts[topIx].label;
+        if(label && RomProcessingConstants.OVERRIDE_CHARS.includes(label[label.length - 1])) break;
+        topIx++;
+      }
+
+      const rewriteParts = patch.parts.slice(topIx);
+      patch.parts = patch.parts.slice(0, topIx);
+      
+      let file = patch;
       let dstIx = -1;
-      //const inc = asmFiles.filter(x => !.has(x.name.toUpperCase()));
-      for (let ix = 0; patch.parts && ix < patch.parts.length;) {
-        const block = patch.parts[ix];
-        let match: any = null;
-        let adjust = 0;
-        let force = false;
-        let label = block.label;
 
-        if (label) {
-          if (label[label.length - 1] === '!') {
-            force = true;
-            label = label.slice(0, -1);
-          }
-          const adjustIx = label.search(/[-+]$/)
-          if(adjustIx > 0) {
-            adjust = label[adjustIx] === '+' ? 1 : -1;
-            label = label.slice(0, adjustIx);
-          }
-          match = masterLookup[label.toUpperCase()];
+      //Process rewrite parts in their own list/loop
+      for (const newPart of rewriteParts) {
+        let label = newPart.label!;
+        const lastChar = label[label.length - 1];
 
-          // for (const i of inc) {
-          //   if (!i.parts) continue;
-          //   for (let y = 0; y < i.parts.length; y++) {
-          //     const check = i.parts[y];
-          //     if (check.label === label) {
-          //       file = i; 
-          //       dstIx = y; 
-          //       match = check;
-          //       break;
-          //     }
-          //   }
-          // }
+        //Handle rewrite commands
+        if (RomProcessingConstants.OVERRIDE_CHARS.includes(lastChar)) {
+          label = label.slice(0, -1).toUpperCase();
+          const match = masterLookup[label];
+          if(!match) throw new Error(`Patch ${patch.name} contains a rewrite that does not exist: ${label}`);
+
+          file = match.file!;
+          dstIx = file.parts!.indexOf(match);
+
+          switch (lastChar) {
+            case '!':
+              masterLookup[label] = newPart;
+              file.parts![dstIx++] = newPart;
+              newPart.file = file;
+              continue;
+            case '+': dstIx++;
+            case '-': 
+              if (match.objList[match.objList.length - 1].isDelimiter) {
+                if (lastChar === '+') {
+                  const delimiter = match.objList.pop();
+                  match.objList.push(...newPart.objList);
+                  match.size += newPart.size;
+                  if (!match.objList[match.objList.length - 1].isDelimiter) match.objList.push(delimiter);
+                  else match.size--;
+                }
+                else { 
+                  if (newPart.objList[newPart.objList.length - 1].isDelimiter) {
+                    newPart.objList.pop();
+                    newPart.size--;
+                  }
+                  match.objList.unshift(...newPart.objList);
+                  match.size += newPart.size;
+                }
+                newPart.file = file;
+                continue;
+              }
+              break;
+          }
         }
 
-        if (match && match.file !== patch) {
-          file = match.file;
-          dstIx = match.file.parts!.indexOf(match);
-          if(adjust !== 0) {
-            if(adjust > 0) dstIx++;
-            file!.parts!.splice(dstIx++, 0, block);
-          } else {
-            masterLookup[label!.toUpperCase()] = block;
-            file!.parts![dstIx++] = block;
-          }
-        } else if (force || adjust !== 0) {
-          throw new Error(`Patch ${patch.name} contains a rewrite that does not exist: ${label}`);
-        } else if (dstIx >= 0) {
-          file!.parts!.splice(dstIx++, 0, block);
-        } else { ix++; continue; }
-        // if(!file!.includes) file!.includes = new Set();
-        // file!.includes.add(patch.name.toUpperCase());
-        //for(const include of patch.includes!) file!.includes.add(include);
-        patch.parts!.splice(ix, 1);
-        block.file = file!;
+        file.parts!.splice(dstIx++, 0, newPart);
+        newPart.file = file;
       }
     }
   }

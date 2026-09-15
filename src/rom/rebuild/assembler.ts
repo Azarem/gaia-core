@@ -55,8 +55,8 @@ export class Assembler {
 
   public parseAssembly(): { blocks: AsmBlock[], includes: Set<string>, reqBank?: number } {
     // Initialize root block (no label, location 0) and set as current
-    this.blocks.push(this.currentBlock = new AsmBlock());
-    this.currentBlock!.file = this.file;
+    this.currentBlock = new AsmBlock(this.file);
+    this.blocks.push(this.currentBlock);
     
     // Initialize state machine and process text
     const state = new AssemblerState(this);

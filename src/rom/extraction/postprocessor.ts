@@ -124,19 +124,20 @@ export class PostProcessor {
       lookupList.push(entry ? `&${entry.name}` : new Word(0));
     }
 
-    const newBlock = new AsmBlock(block.location - 1, 0, false, newBlockName);
-    newBlock.file = block;
+    const newBlock = new AsmBlock(block, block.location - 1, 0, newBlockName, 'Offset');
     newBlock.objList = newParts;
 
     block.parts = [ newBlock ];
   }
 
-  public Label( block: ChunkFile, structType: string) {
+  public Label( block: ChunkFile, structType: string, listName?: string) {
     
     if(!block.parts?.length) throw new Error('Invalid block structure for Label post process');
 
     const keyLookup: Record<number, string> = {};
     let endKey = -1;
+
+    listName ??= structType;
 
     for (const part of block.parts) {
 
@@ -149,7 +150,7 @@ export class PostProcessor {
           const part = entry.parts[0];
 
           const key = typeof part === 'number' ? part : part.value as number;
-          const name = `${structType}_${key.toString(16).toUpperCase().padStart(2, '0')}`;
+          const name = `${listName}_${key.toString(16).toUpperCase().padStart(2, '0')}`;
           obj.object[i] = `${name}:`;
           keyLookup[key] = name;
           if (key > endKey) endKey = key;
@@ -164,9 +165,8 @@ export class PostProcessor {
       keyList.push(name ? `&${name}` : new Word(0));
     }
 
-    const newName = `${structType}_list`;
-    const newBlock = new AsmBlock(block.location + block.size - 1, 0, false, newName);
-    newBlock.file = block;
+    const newName = `${listName}_list`;
+    const newBlock = new AsmBlock(block, block.location + block.size - 2, 0, newName, `&${structType}`);
     newBlock.objList = [ { location: newBlock.location, object: keyList } ];
 
     this._referenceManager.nameTable.set(newBlock.location, newName);

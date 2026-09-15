@@ -501,7 +501,7 @@ export class BlockWriter {
         let name = '';
         
         if (adrs.isROM) {
-          name = this._referenceManager.resolveName(adrs.toLocation(), addressType, false);
+          name = this._referenceManager.resolveName(adrs.toLocation(), addressType, false, this._currentBlock);
         } else if(addressType === AddressType.Offset) {
           name = adrs.offset.toString(16).toUpperCase().padStart(4, '0');
         } else {
