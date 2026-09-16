@@ -1,4 +1,3 @@
-import { BinType } from '../types/resources';
 import type { ICompressionProvider } from '../types/compression';
 import { DbBlock } from './blocks';
 import type { DbConfig } from './config';
@@ -6,24 +5,24 @@ import type { DbEntryPoint } from './entrypoints';
 import { DbFile, DbFileType } from './files';
 import { DbStruct } from './structs';
 import { DbAddressingMode } from './addressingMode';
-import { DbStringType, DbStringCommand, DbStringLayer, DbStringDictionary } from './strings';
+import { DbStringType, DbStringCommand, DbStringDictionary } from './strings';
 import { CopDef } from './cop';
-import { listDirectory, readFileAsBinary, readJsonFile, saveFileAsText, saveFileAsBinary, readFileAsText } from '../utils';
+import { listDirectory, readFileAsBinary, saveFileAsText, saveFileAsBinary, readFileAsText } from '../utils';
 import { DbPart } from './parts';
 import { DbTransform } from './transforms';
-import type { BaseRomFileData, ProjectFileData, ProjectPayload } from '../supabase/types';
 import { OpCode } from './opcode';
 import { MemoryMapMode } from '../types/addressing';
 import { ChunkFile } from '../types/files';
 import { DbScene } from './scenes';
 import { DbGroup } from './groups';
 import { CompressionAlgorithms } from '../compression';
-import { DbBaseRomModule, DbGameRomModule, DbProjectModule } from './modules';
+import { DbGameRomModule } from './modules';
 import { BlockWriter } from '../rom/extraction/writer';
 import { BlockReader } from '../rom/extraction/blocks';
 import { RomWriter } from '../rom/rebuild/writer';
 import { DbHeader } from './header';
 import { AsmBlock } from '../types/assembly';
+import { decodeBase64 } from '../utils/base64';
 
 /**
  * Main database root class
@@ -255,28 +254,20 @@ export class DbRootUtils {
     const compression = cfg.compression ? CompressionAlgorithms[cfg.compression]() : undefined;
 
     
-    const baseRomChunks = (module as DbBaseRomModule).baseRomFiles ?? module.supaBaseRomFiles?.map((file: BaseRomFileData) => {
+    const baseRomChunks = module.baseRomFiles?.map((file) => {
       const chunkFile = new ChunkFile(fileTypeLookup[file.type], file.name);
-      if(file.isText) {
-        chunkFile.textData = file.text ?? undefined;
-        chunkFile.size = file.text?.length ?? 0;
-      } else {
-        chunkFile.rawData = file.data;
-        chunkFile.size = file.data?.length ?? 0;
-      }
+      chunkFile.textData = file.text;
+      chunkFile.rawData = file.data ? decodeBase64(file.data) : undefined;
+      chunkFile.size = chunkFile.rawData?.length ?? file.text?.length ?? 0;
       return chunkFile;
     });
     
-    const projectChunks = (module as DbProjectModule).projectFiles ?? module.supaProjectFiles?.map((file: ProjectFileData) => {
+    const projectChunks = module.projectFiles?.map((file) => {
       const chunkFile = new ChunkFile(fileTypeLookup[file.type], file.name);
-      chunkFile.group = file.module ?? undefined;
-      if(file.isText) {
-        chunkFile.textData = file.text ?? undefined;
-        chunkFile.size = file.text?.length ?? 0;
-      } else {
-        chunkFile.rawData = file.data;
-        chunkFile.size = file.data?.length ?? 0;
-      }
+      chunkFile.group = file.module;
+      chunkFile.textData = file.text;
+      chunkFile.rawData = file.data ? decodeBase64(file.data) : undefined;
+      chunkFile.size = chunkFile.rawData?.length ?? file.text?.length ?? 0;
       return chunkFile;
     });
 

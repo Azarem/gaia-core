@@ -137,8 +137,12 @@ export class BlockWriter {
 
       lines.push('---------------------------------------------');
 
-      const objectLines = this.writeObject(part.objList, -1);
-      lines.push(...objectLines);
+      try {
+        const objectLines = this.writeObject(part.objList, -1);
+        lines.push(...objectLines);
+      } catch (error) {
+        throw new Error(`Error writing object for part ${part.label}: ${error}`);
+      }
     }
 
     let content = lines.join(RomProcessingConstants.NEWLINE);

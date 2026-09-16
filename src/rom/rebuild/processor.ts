@@ -88,21 +88,7 @@ export class RomProcessor {
 
     // Build include lookup map per asm file
     for (const f of asmFiles) {
-      // const includeBlocks = asmFiles
-      //   .filter(x => f.includes?.has(x.name.toUpperCase()))
-      //   .flatMap(x => x.parts!)
-      //   .filter(b => !!b.label);
-
       f.includeLookup = masterLookup;
-
-      // //Add labels from include blocks
-      // for (const b of includeBlocks) {
-      //   let label = b.label;
-      //   if (label) {
-      //     if (label[label.length - 1] === '!') label = label.slice(0, -1);
-      //     f.includeLookup.set(label.toUpperCase(), b);
-      //   }
-      // }
 
       //Add labels from current file
       for (const b of f.parts!) {
@@ -120,7 +106,6 @@ export class RomProcessor {
           } else {
             masterLookup[label] = b;
           }
-          //f.includeLookup.set(label, b);
         }
       }
     }

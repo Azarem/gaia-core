@@ -22,8 +22,8 @@ export * from './collaboration'
 // Database
 export * from './database'
 
-// Supabase integration
-export * from './supabase'
+// Static package loading
+export * from './static'
 
 // Utilities
 export * from './utils' 

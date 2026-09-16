@@ -18,6 +18,24 @@ extract → edit .asm / create patches → rebuild → test in emulator
 
 ---
 
+## File Layering and Replacement
+
+The rebuild system applies files in layers: baserom files → base project files → selected modules → manual files. When a file in a later layer shares the **same name** as a file from an earlier layer, it **replaces the earlier file entirely**.
+
+- **Assembly/patch files** (`.asm`, `.patch.asm`): The `textData` of the existing file is overwritten with the new file's content. The file is then re-assembled from the new source.
+- **Binary files** (graphics, sound, etc.): The `rawData` and `size` of the existing file are replaced.
+
+This means a module or patch layer can completely override an extracted block, a baserom patch, or even another module's file simply by using the same filename. The engine does not merge file contents — it is a full replacement.
+
+```
+Layer 1 (baserom):  patches/Utils.patch.asm  ← original
+Layer 2 (module):   patches/Utils.patch.asm  ← replaces Layer 1 entirely
+```
+
+New files (names that don't match any existing file) are appended to the build. Patch-type files are additionally tracked in the patch list for label matching.
+
+---
+
 ## Patch File Structure
 
 A patch file has two layers:
@@ -39,17 +57,22 @@ A patch file has two layers:
 !WS_RIGHT_EDGE                  0140
 
 ; =============================================
-; Parts: labeled blocks merged into the ROM
+; Topmost content (new standalone blocks)
+; Everything BEFORE the first override label
 ; =============================================
 
-; --- Topmost content (new standalone block) ---
 my_new_routine {
     LDA #$0001
     RTL
 }
 
-; --- Rewrite (replaces existing part) ---
+; =============================================
+; Rewrite content (override labels)
+; Everything FROM the first override label onwards
+; =============================================
+
 ExistingLabel! {
+    ; Replaces the original ExistingLabel part
     LDA #$0002
     RTS
 }
@@ -203,56 +226,118 @@ Before patch application, the engine builds a global lookup table mapping every 
 ; The block prefix "camera_scroll_controller" is stripped and ignored
 ```
 
-### Label Suffixes
+### Label Suffixes (Override Characters)
 
-Labels in patch files can have suffixes that control how the content is merged:
+Labels in patch files use **override suffixes** (`!`, `-`, `+`) to declare rewrite operations. These suffixes are the boundary between topmost content and rewrite content — the first label with an override suffix marks where rewrite processing begins.
 
 | Suffix | Syntax | Behavior |
 |--------|--------|----------|
-| `!` (force rewrite) | `Label! { ... }` | **Replace** the matched part. **Error** if no match found. |
-| *(none)* | `Label { ... }` | **Replace** the matched part. **Silent** if no match found — content is inserted after the previous label's position instead. |
-| `-` (insert before) | `Label- { ... }` | **Insert before** the matched part. Error if no match found. |
-| `+` (insert after) | `Label+ { ... }` | **Insert after** the matched part. Error if no match found. |
+| `!` (replace) | `Label! { ... }` | **Replace** the matched part in-place. **Error** if no match found. |
+| `-` (insert before) | `Label- { ... }` | **Insert before** the matched part (or merge into delimiter block). **Error** if no match found. |
+| `+` (insert after) | `Label+ { ... }` | **Insert after** the matched part (or merge into delimiter block). **Error** if no match found. |
+| *(none, after override)* | `Label { ... }` | **Chained insert** at the current cursor position in the target file. |
+
+**All override suffixes require a match.** There are no silent rewrites — if a label with `!`, `-`, or `+` does not match any existing part in the codebase, the build fails with an error.
+
+**Labels without suffixes** are never treated as rewrites. They are either:
+- **Topmost content** — if they appear before the first override label
+- **Chained inserts** — if they appear after an override label has established a target file
+
+**Duplicate label protection:** During label table construction, any non-override label that conflicts with an existing label name throws an error. Override labels (with `!`, `-`, `+`) are allowed to conflict because they are expected to target existing parts.
 
 ### Matching Algorithm
 
-The patch application algorithm (`RomProcessor.applyPatches`) processes each patch file's parts sequentially:
+The patch application algorithm (`RomProcessor.applyPatches`) processes each patch file in two phases:
+
+**Phase 1 — Separate topmost from rewrites:**
+
+The engine scans the patch's parts list from the beginning, looking for the first label that ends with an override character (`!`, `+`, or `-`). Everything before that boundary is **topmost content** and stays in the patch file. Everything from that point onwards is extracted into a **rewrite list** for processing.
 
 ```
-For each patch file:
-  file = null, dstIx = -1  (no target file/position yet)
+Patch parts: [A] [B] [C!] [D] [E-] [F]
+                        ↑ first override char
+Topmost:     [A] [B]           ← stays in patch file
+Rewrites:    [C!] [D] [E-] [F] ← processed below
+```
 
-  For each part in the patch:
-    1. Strip suffix (!, -, +) from label to get the lookup key
-    2. Search masterLookup for the label (case-insensitive)
+**Phase 2 — Process rewrites:**
 
-    If MATCH found (and match is in a different file than the patch):
-      → Set file = matched part's file, dstIx = matched part's index
+```
+file = patch, dstIx = -1
 
-      If suffix is - or +:
-        → INSERT the patch part before (-) or after (+) the match position
-      Else (no suffix or !):
-        → REPLACE the matched part with the patch part
-        → Update masterLookup to point to the new part
+For each part in the rewrite list:
 
-    Else if FORCE (! suffix) or ADJUST (- or + suffix):
-      → THROW ERROR — required match not found
+  If label has override suffix (!, -, +):
+    1. Strip suffix, lookup label in masterLookup (case-insensitive)
+    2. If NO MATCH → THROW ERROR (all overrides require a match)
+    3. Set file = matched part's file, dstIx = matched position
 
-    Else if dstIx >= 0 (a previous label already matched):
-      → INSERT at the current dstIx position (chained insert)
-      → This implements "place after the last matched label"
+    If suffix is !:
+      → REPLACE the matched part in-place
+      → Update masterLookup to point to the new part
 
-    Else (no match, no prior context):
-      → SKIP — leave this part in the patch file as standalone content
+    If suffix is + or -:
+      → If target part ends with a delimiter (array/struct closing bracket):
+        → MERGE content into the target part's object list
+           + appends before the closing delimiter
+           - prepends at the beginning of the object list
+      → Otherwise:
+        → SPLICE as a new part before (-) or after (+) the match
 
-    Remove matched/inserted parts from the patch file
+  Else (no override suffix):
+    → INSERT at advancing dstIx cursor (chained insert)
+```
+
+### Delimiter Merging (`+` and `-` with Arrays/Structs)
+
+When using `+` or `-` on a part that ends with a **delimiter** (such as a `]` closing bracket for array/struct blocks), the engine performs an **in-place merge** instead of inserting a separate part. This allows extending data tables and struct lists without replacing the entire part.
+
+**`+` (append):** The target's closing delimiter is temporarily removed, the new content's object list is appended, and the delimiter is restored (unless the new content already ends with one).
+
+**`-` (prepend):** The new content's object list is inserted at the beginning of the target's object list. If the new content ends with a delimiter, it is removed to avoid a duplicate mid-list delimiter.
+
+In both cases, the target part's size is updated to reflect the merged content.
+
+**Example — appending entries to a thinker spawn list:**
+
+```asm
+; Original extracted part:
+thinker_spawn_0CEB2F [
+  thinker-spawn < #00, @some_thinker >
+]
+
+; Patch appends new entries into the same list:
+thinker_spawn_0CEB2F+ [
+  thinker-spawn < #74, @ambient_palette_cycler >
+  thinker-spawn < #00, @ending_comet_dma_setup >
+  thinker-spawn < #24, @parallax_thinker >
+]
+
+; Result after merge:
+thinker_spawn_0CEB2F [
+  thinker-spawn < #00, @some_thinker >
+  thinker-spawn < #74, @ambient_palette_cycler >
+  thinker-spawn < #00, @ending_comet_dma_setup >
+  thinker-spawn < #24, @parallax_thinker >
+]
+```
+
+**Example — inserting code before a matched part:**
+
+```asm
+; Insert instructions before code_068114 (no delimiter → standard splice)
+code_068114- {
+    LDA #$4000
+    TSB $09EC
+    COP [4F] ( $7F0200, #$7800, #$0100 )
+}
 ```
 
 ### Topmost Content (Standalone Blocks)
 
-Code that appears **before any matching label** in the patch file — or any labeled block that doesn't match an existing part — remains in the patch file as **topmost content**. This content becomes a new standalone ROM chunk.
+Code that appears **before the first override label** (`!`, `-`, or `+` suffix) in the patch file remains in the patch file as **topmost content**. This content becomes a new standalone ROM chunk placed by the layout engine.
 
-**Key rule:** New code that should exist as a single standalone unit (not patched into other blocks) should be declared **at the top of the file**, before any rewrite/matching labels.
+**Key rule:** New code that should exist as a single standalone unit (not patched into other blocks) **must** be declared at the top of the file, before any override labels. Once the engine encounters a label with an override suffix, all remaining parts are treated as rewrite/insert operations.
 
 ```asm
 ?BANK 03
@@ -288,10 +373,10 @@ ExistingLabel! {
 
 ### Chained Inserts
 
-After a label match establishes a target file and position (`dstIx`), subsequent parts that don't match any label are inserted sequentially at the advancing cursor position. This allows inserting multiple new parts into an existing block:
+After an override label establishes a target file and cursor position (`dstIx`), subsequent parts **without override suffixes** are inserted sequentially at the advancing cursor position. This allows inserting multiple new parts into an existing block:
 
 ```asm
-; Match an existing label — sets the target file and position
+; Override match — sets the target file and cursor position
 ExistingLabel! {
     ; Replace existing code
     JSR $&new_helper_a
@@ -299,7 +384,7 @@ ExistingLabel! {
     RTS
 }
 
-; These don't match any existing label, so they INSERT after ExistingLabel
+; These have no override suffix, so they INSERT after ExistingLabel
 new_helper_a {
     LDA #$0001
     RTS
@@ -310,6 +395,8 @@ new_helper_b {
     RTS
 }
 ```
+
+A subsequent override label (`!`, `-`, `+`) resets the target file and cursor to the new match location. Non-override labels continue inserting at whatever cursor position was last established.
 
 ### Size and Rebase Rules
 
@@ -467,7 +554,7 @@ UpdateScrollColumn! {
 
 Each `!` suffix means "this label **must** exist in the extracted ROM — error if not found."
 
-### New Standalone Part (no suffix, no match)
+### Chained Insert (no suffix, after an override)
 
 ```asm
 BlankScrollColumn {
@@ -480,7 +567,7 @@ BlankScrollColumn {
 }
 ```
 
-`BlankScrollColumn` has no `!` suffix and doesn't match any existing part name. Since it appears after `code_00EAF0!` (which already matched), it gets **inserted** into the target file after the previously matched position. This places it alongside the camera code it supports.
+`BlankScrollColumn` has no override suffix and appears after `code_00EAF0!` (which matched and established a target file and cursor position). Since it follows an override label, it is treated as a **chained insert** — spliced into the target file immediately after the previously matched/inserted position. This places it alongside the camera code it supports.
 
 ### Inline Sub-Labels
 
@@ -610,17 +697,25 @@ Create a new `.patch.asm` file in the `baserom/patches/` directory:
 
 !my_constant                 0040  ; optional: named constants
 
-; New standalone code (topmost)
+; === TOPMOST CONTENT (before any override labels) ===
+; New standalone code placed as its own ROM chunk
 my_new_function {
     ; ...
     RTL
 }
 
-; Rewrites of existing code
+; === REWRITE CONTENT (override labels and chained inserts) ===
+; The first ! suffix marks the boundary
 existing_function! {
-    ; Modified version
+    ; Replaces the original
     JSL $@my_new_function
     ; ...
+    RTS
+}
+
+; Chained insert — placed after existing_function in the target file
+my_helper {
+    ; New code inserted into the same block
     RTS
 }
 ```
@@ -643,11 +738,12 @@ The rebuild will:
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `Duplicate label: X` | Two parts have the same label | Rename one, or use rewrite suffix |
-| `Patch X contains a rewrite that does not exist: Y` | `!` or `+`/`-` suffix but label not found | Check spelling, verify the target part exists in extracted code |
+| `Duplicate label in file: X` | A non-override label conflicts with an existing label | Rename the label, or add a `!` suffix if you intend to replace it |
+| `Patch X contains a rewrite that does not exist: Y` | Override suffix (`!`, `+`, `-`) but label not found | Check spelling, verify the target part exists in extracted code |
 | Bank overflow / wrong address | `$&` reference to a different bank | Change to `$@` for cross-bank, or use `?BANK` to colocate |
-| Patch not appearing in output | All parts matched/spliced, no topmost content | Expected behavior — patch content lives inside target blocks |
+| Patch not appearing in output | All parts were rewrite/insert, no topmost content | Expected behavior — patch content lives inside target blocks |
 | Code assembled at wrong location | Missing `?BANK` for bank-sensitive code | Add `?BANK XX` directive |
+| New code ended up as rewrite | Label unintentionally matches existing part | Move new code above the first override label (topmost section) |
 
 ---
 
@@ -662,18 +758,18 @@ The rebuild will:
 │ ?INCLUDE 'block_name'  (optional)            │
 │ !tag_name  HHHH        (optional)            │
 │ ?IF 'module_name'      (optional)            │
-├─────────────────────────────────────────────┤
-│ topmost_label {        ← new standalone code │
+├──── TOPMOST CONTENT ────────────────────────┤
+│ new_label {            ← new standalone code │
+│   ...                  (stays in patch file) │
+│ }                                            │
+├──── REWRITE BOUNDARY (first override) ──────┤
+│ existing_label! {      ← replace in-place    │
 │   ...                                        │
 │ }                                            │
-├─────────────────────────────────────────────┤
-│ existing_label! {      ← force rewrite       │
+│ existing_label- {      ← insert/merge before │
 │   ...                                        │
 │ }                                            │
-│ existing_label- {      ← insert before       │
-│   ...                                        │
-│ }                                            │
-│ existing_label+ {      ← insert after        │
+│ existing_label+ {      ← insert/merge after  │
 │   ...                                        │
 │ }                                            │
 │ new_label {            ← chained insert      │
@@ -698,9 +794,12 @@ The rebuild will:
 | Suffix | Match Required | On Match | On No Match |
 |--------|---------------|----------|-------------|
 | `!` | **Yes** | Replace target part | **Error** thrown |
-| *(none)* | No | Replace target part | Insert after previous or keep as topmost |
-| `-` | **Yes** | Insert **before** target | **Error** thrown |
-| `+` | **Yes** | Insert **after** target | **Error** thrown |
+| `-` | **Yes** | Insert/merge **before** target | **Error** thrown |
+| `+` | **Yes** | Insert/merge **after** target | **Error** thrown |
+| *(none, in topmost)* | — | N/A (topmost content) | Stays in patch file as new chunk |
+| *(none, after override)* | — | N/A (chained insert) | Inserted at cursor position in target file |
+
+**Note:** `+` and `-` perform delimiter merging (in-place content append/prepend) when the target part ends with a delimiter such as `]`. Otherwise they perform a standard splice insert.
 
 ### Tag Reference
 

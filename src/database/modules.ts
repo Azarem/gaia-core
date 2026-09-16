@@ -1,10 +1,9 @@
-import { DbAddressingMode, DbStringType, CopDef, DbConfig, DbLabel, DbStruct, DbBlock, DbGroup, DbTransform, DbFile, DbFileType, DbHeader } from ".";
-import { BaseRomFileData, ProjectFileData } from "../supabase/types";
-import { ChunkFile } from "../types";
+import { DbAddressingMode, DbStringType, CopDef, DbConfig, DbStruct, DbBlock, DbGroup, DbTransform, DbFile, DbFileType, DbHeader } from ".";
+import { PackageFileEntry } from "../static/types";
 
 export interface DbGameRomModule {
-    supaProjectFiles?: ProjectFileData[]
-    supaBaseRomFiles?: BaseRomFileData[]
+    projectFiles?: PackageFileEntry[]
+    baseRomFiles?: PackageFileEntry[]
     mnemonics: Record<number, string>
     overrides: Record<number, Record<string, number>>
     rewrites: Record<string, number>
@@ -25,12 +24,4 @@ export interface DbGameRomModule {
     comments?: Record<number, string>
     blockNotes?: Record<string, string>
     partNotes?: Record<string, string>
-}
-
-export interface DbBaseRomModule extends DbGameRomModule {
-    baseRomFiles: ChunkFile[]
-}
-
-export interface DbProjectModule extends DbBaseRomModule {
-    projectFiles: ChunkFile[]
 }

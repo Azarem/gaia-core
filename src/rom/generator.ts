@@ -3,7 +3,7 @@ import { DbRoot, DbRootUtils } from '../database';
 import { ChunkFile } from '../types/files';
 import { BlockReader, BlockWriter } from './extraction';
 import { RomWriter } from './rebuild';
-import { fromSupabaseByProject } from '../supabase/rom-loader';
+import { fromPackageUrl } from '../static/package-loader';
 import { DbGameRomModule } from '../database/modules';
 import { listDirectory } from '../utils/file';
 
@@ -37,11 +37,11 @@ export class RomGenerator {
     return true;
   }
 
-  public async validateAndDownload(sourceData: Uint8Array): Promise<boolean> {
+  public async validateAndLoadFromUrl(sourceData: Uint8Array, packageUrl: string, packageHash?: string): Promise<boolean> {
     const calc = crc32_buffer(sourceData);
     if(this.crc !== calc) return false;
 
-    const moduleData = await fromSupabaseByProject(this.projectName);
+    const moduleData = await fromPackageUrl(packageUrl, packageHash);
     this.dbRoot = DbRootUtils.fromGameModule(moduleData);
     this.sourceData = sourceData;
     return true;

@@ -144,7 +144,7 @@ export class ReferenceManager {
     const rewrite = !block?.compressed ? this.root.rewrites[location] : undefined;
     if (rewrite !== undefined) {
       name = this.tryGetName(rewrite).referenceName;
-      if (!name) throw new Error('Rewrite reference not found');
+      if (!name) throw new Error(`Rewrite reference not found for location ${location.toString(16).toUpperCase().padStart(6, '0')}`);
       label = this.processClosestMatch(location, rewrite);
       location = rewrite;
     }
