@@ -680,17 +680,16 @@ The recommended process for annotating a new block:
 3. **Run location-tagged extraction** — run `npm run extract:lt` to produce address-tagged output. Every uncommented instruction now shows its decimal ROM address as `; {address}`.
 4. **Determine the bank** — identify which ROM bank the block lives in (bank = floor(start_address / 65536)).
 5. **Audit names** — check every label in `names.json` for accuracy against the code you just read. Rename generic (`code_XXXXXX`) or misleading labels. See [Name Auditing](#name-auditing-and-namesjson-maintenance).
-6. **Write the block note** — architecture, data formats, WRAM variables. Include accurate routine/handler counts. Add to `notes/blockNotes/bankNN.json`.
-7. **Write part notes** for each routine — purpose, parameters, algorithm. Add to `notes/partNotes/bankNN.json`. Ensure keys match `names.json` values exactly.
-8. **Write inline comments** — read the `extract:lt` output and use the visible `; {address}` tags as JSON keys. Add to `notes/comments/bankNN.json`.
-9. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
-10. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
+6. **Edit the `.asm` file directly** — add block notes (top of file), part notes (before labels), and inline comments (after `; {address}` tags) in the extracted `.asm` file itself.
+7. **Run `npm run ingest`** — the ingest script parses your edits and writes them to the correct `notes/` JSON files automatically. No manual JSON editing required.
+8. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
+9. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
 
-> **Why two extraction passes?** The first pass (standard) lets you read the code without visual noise from address tags. The second pass (`extract:lt`) reveals every instruction's address so you can write comment JSON keys accurately. The final verification pass (standard again) confirms the comments appear correctly and flow naturally.
+> **Why the ingest step?** Agents and humans edit `.asm` files directly — this is natural and eliminates JSON key-value authoring errors. The `ingest` script handles bank detection, JSON key generation, merge/update/delete logic, and file sorting automatically. See [Notes Ingestion Script](#implemented-notes-ingestion-script-npm-run-ingest) for full details.
 
 ### Verifying Comments After Writing
 
-After modifying any comment JSON files, always run standard extraction to verify:
+After running `npm run ingest` (or modifying any comment JSON files manually), always run standard extraction to verify:
 
 ```bash
 cd <baserom-repo>
@@ -710,7 +709,7 @@ To check coverage, you can also run `npm run extract:lt` — any remaining `; {a
 **If you are about to write a script that modifies more than 10 comment entries at once, STOP.** Read the [Critical Rules for Comment JSON Manipulation](#critical-rules-for-comment-json-manipulation) section first. Bulk comment manipulation has caused the loss of ~1,000 valid entries. The rules exist to prevent this from happening again.
 
 **Minimum safety protocol:**
-1. `git commit` the current state before ANY bulk changes
+1. Ask the user to `git commit` the current state before ANY bulk changes (agents must never commit)
 2. Never empty JSON files
 3. Never bulk-shift addresses
 4. Verify each change individually via `extract:lt` output
@@ -767,16 +766,14 @@ If comments appear to be at wrong addresses, **do not** write a script to shift 
 
 **Instead:** Verify each suspect comment individually by reading the `extract:lt` output. The correct address is visible right there. Fix one at a time.
 
-### Rule 3: Always commit or snapshot before bulk modifications
+### Rule 3: Always snapshot before bulk modifications
 
-Before running ANY script that modifies comment JSON files:
+Before running ANY script that modifies comment JSON files, **ask the user to commit**. Only the user is allowed to run `git commit`. The agent must never commit on its own.
 
-```bash
-git add notes/comments/
-git commit -m "snapshot: pre-audit baseline"
-```
+Prompt the user:
+> "Please commit the current state before I proceed: `git add notes/ && git commit -m 'snapshot: pre-audit'`"
 
-This allows instant rollback if a script damages the data. Without this, recovery requires manually reconstructing hundreds of entries.
+Wait for confirmation before continuing. This allows instant rollback if a script damages the data. Without this, recovery requires manually reconstructing hundreds of entries.
 
 ### Rule 4: Comments without extract:lt tags are for auto-discovered files
 
@@ -847,7 +844,7 @@ For a file with ~100 instruction lines, this process could easily take 30+ minut
 
 The `emitLineTracking` config option (exposed via `npm run extract:lt`) solves this entirely. The engine emits `; {decimal_address}` on every uncommented instruction line, making the JSON key visible in-place. See the [Location-Tagged Extraction](#location-tagged-extraction-extractlt) section for details.
 
-**Impact:** Comment address errors drop to zero. The annotation time for inline comments is reduced to reading the code and deciding *what to say*, not *where to say it*.
+**Impact:** Comment address errors drop to zero. The annotation time for inline comments is reduced to reading the code and deciding *what to say*, not *where to say it*. Combined with the `npm run ingest` script, agents can edit `.asm` files directly and have all annotations synchronized to JSON automatically.
 
 ### Observation: Comment Placement on the First Instruction of a Group
 
@@ -877,9 +874,10 @@ Many item handlers follow identical structural patterns (check scene → check t
 
 Block notes and part notes are keyed by **name strings** (block names from `blocks.json`, routine labels from `names.json`), not by addresses. This means they can be written entirely from the standard `extract` output — `extract:lt` is only needed for inline comments.
 
-Recommended split:
-1. Write block notes and part notes from standard extraction (cleaner reading experience)
-2. Switch to `extract:lt` only when writing inline comments
+With the ingest script, the simplest workflow is:
+1. Run `extract:lt` (provides both name structure and address tags in one pass)
+2. Edit the `.asm` file — add all three tiers of annotations at once
+3. Run `npm run ingest` — the script handles all three tiers simultaneously
 
 ### Future Improvement: Coverage Gap Detection
 
@@ -946,32 +944,116 @@ A potential evolution would be a structured format:
 
 This would enable tools like "collapse all comments in group X" or "validate that grouped comments are contiguous." However, the added complexity may not be worth it — the current freeform strings with the "comment at first instruction" convention achieve similar grouping implicitly.
 
-### Future Improvement: Agent-Optimized Comment Workflow
+### Implemented: Notes Ingestion Script (`npm run ingest`)
 
-The current workflow requires the agent to:
-1. Read `extract:lt` output (large files)
-2. Mentally note which addresses need comments
-3. Write JSON with those addresses as keys
-4. Re-extract to verify
+The `ingest` command eliminates the need to manually edit JSON files. Agents and humans edit the extracted `.asm` files directly, then run the ingest script to synchronize the changes into `notes/` JSON files.
 
-An optimized flow could provide the agent with a **diff-oriented view** — only showing uncommented instructions in complex routines, with surrounding context. This would reduce the amount of text the agent needs to process when annotating a file that's partially documented.
+**How to run it:**
 
-Another option: a tool that accepts comments in a more natural format (e.g., inline in the ASM after the `; {address}` tag) and converts them to JSON. The agent could edit the `extract:lt` output directly, replacing `; {230620}` with `; BCD mode: packed decimal`, and a converter would parse the file and produce the corresponding `notes/comments/bankNN.json` entries. This would eliminate the JSON key-value authoring step entirely.
+```bash
+cd <baserom-repo>
+npm run ingest              # Ingest all .asm files
+npm run ingest:dry          # Preview changes without writing (--dry-run)
+npm run ingest:verbose      # Show detailed output (--verbose)
+node src/index.ts ingest -- path/to/file.asm   # Ingest a single file
+```
 
-### Future Improvement: Inline Comment Ingestion (`ingest:comments`)
+**What it supports:**
 
-The largest friction point for agents is the round-trip between reading `extract:lt` output and writing JSON keys. An `ingest:comments` tool would allow agents to write comments directly in the extracted `.asm` files:
+| Operation | How it works |
+|-----------|-------------|
+| **Add** annotation | Write a new block note, part note, or inline comment in the `.asm` file → ingest adds it to JSON |
+| **Update** annotation | Edit existing text in the `.asm` file → ingest updates the JSON entry |
+| **Delete** annotation | Remove the text from the `.asm` file → ingest removes the JSON entry |
 
-1. Run `npm run extract:lt` to produce address-tagged output
-2. Edit the `.asm` file directly, replacing `; {230620}` with `; BCD mode: packed decimal`
-3. Run `npm run ingest:comments` to parse the edited file, extract all `;`-prefixed text on lines that previously had `; {address}` tags, and write the corresponding entries to `notes/comments/bankNN.json`
+**How deletion detection works:**
 
-This would eliminate the need for agents to:
-- Open and navigate large JSON files to find insertion points
-- Maintain ascending address order manually
-- Cross-reference between `.asm` and `.json` files during authoring
+Deletions are scoped to the files being processed — entries from unprocessed files are never touched.
 
-The tool would need to distinguish between original comments (already in JSON, preserved as-is) and newly-written comments (need JSON ingestion). This could be done by comparing the edited file against a fresh `extract:lt` baseline.
+| Tier | Deletion condition |
+|------|-------------------|
+| **Block note** | File has `-----` structure but no `; ` lines before the first separator, and the file name has an entry in `blockNotes/bankNN.json` |
+| **Part note** | A label appears in the file without a preceding `; ` comment block, and the label has an entry in `partNotes/bankNN.json` |
+| **Comment** | A `; {address}` tag appears without text after it (extract:lt mode only), and the address has an entry in `comments/bankNN.json` |
+
+**The recommended workflow:**
+
+```
+1. npm run extract:lt          → Produce address-tagged .asm output
+2. Edit the .asm files         → Add/update/remove annotations directly
+3. npm run ingest              → Synchronize edits into notes/ JSON
+4. npm run extract             → Verify the final output
+```
+
+**Detailed editing instructions:**
+
+To **add or edit an inline comment**, find the `; {address}` tag on the target instruction and append your comment text after the address:
+```asm
+; Before (no comment):
+    SED                   ; {230620}
+; After (comment added):
+    SED                   ; {230620} BCD mode: jewelsCollected is packed decimal
+```
+
+To **delete an inline comment**, remove the text after the `; {address}` tag (keep the tag itself):
+```asm
+; Before (has comment):
+    LDA $00B2             ; {39414} Check if VRAM DMA is pending
+; After (comment removed):
+    LDA $00B2             ; {39414}
+```
+
+To **add or edit a part note**, write `; ` comment lines immediately before the label:
+```asm
+---------------------------------------------
+; Entry point for the per-frame combat collision system.
+;
+; Saves processor state and data bank.
+
+RunCombatCollision {
+```
+
+To **delete a part note**, remove the `; ` comment lines before the label (leave the `-----` separator and the label intact):
+```asm
+---------------------------------------------
+
+RunCombatCollision {
+```
+
+To **add or edit a block note**, write `; ` comment lines at the very top of the file, before the first `-----` separator:
+```asm
+; Combat and interaction collision system (244613–247295, Bank 03).
+;
+; Implements all actor-vs-actor collision detection...
+---------------------------------------------
+```
+
+To **delete a block note**, remove the `; ` lines at the top, leaving only the `-----` separator:
+```asm
+---------------------------------------------
+
+?BANK 03
+```
+
+**Safety guarantees:**
+
+- **Idempotent**: Running ingest twice on unchanged files produces no changes and no spurious git diffs
+- **Scoped deletions**: Only entries visible in the processed file(s) can be deleted — other files' annotations are untouched
+- **Additions take precedence**: If a label has both an addition and a deletion candidate in the same batch, the addition wins
+- **No empty files**: The script never empties a JSON file — it only modifies individual entries
+- **Sorted output**: JSON keys are sorted (numerically for addresses, alphabetically for names) for consistent diffs
+
+**Bank detection:**
+
+The ingest script uses a 5-strategy fallback to determine which `bankNN.json` file an annotation belongs to:
+
+1. `?BANK` directive in the file
+2. `code_XXXXXX` / `loc_XXXXXX` labels (hex address encodes the bank)
+3. `; {address}` tags from extract:lt (bank = floor(address / 65536))
+4. File name lookup in `names.json`
+5. First top-level label lookup in `names.json`
+
+For inline comments, the bank is always determined directly from the decimal address (bank = floor(address / 65536)), regardless of the file's bank.
 
 ### Future Improvement: Block Audit Report (`audit:blocks`)
 
@@ -1056,12 +1138,13 @@ When auditing existing comments, run `extract:lt` and check that each comment ap
 
 ### Working efficiently with large JSON files
 
-Comment files can have hundreds of entries. For agents working with these files:
+> **Note:** With the ingest script, agents should rarely need to edit JSON files directly. Edit `.asm` files and run `npm run ingest` instead. This section is retained for manual inspection and debugging.
+
+Comment files can have hundreds of entries. For agents inspecting these files:
 
 1. **Search, don't scan.** Use grep/search to find entries by address range (e.g., `"435"` to find all addresses in the 43500–43599 range).
-2. **Read targeted ranges.** Use line-offset reads around the addresses you need to modify, not full file reads.
-3. **Insert with context.** When adding new entries, find the two surrounding address keys and use them as the unique context string for the replacement. Always maintain ascending address order.
-4. **Batch related changes.** Group all comment additions for one routine into a single insertion point rather than making one edit per comment.
+2. **Read targeted ranges.** Use line-offset reads around the addresses you need to inspect, not full file reads.
+3. **Prefer the ingest workflow.** If you need to add, update, or delete entries, edit the `.asm` file and run `npm run ingest` rather than modifying JSON directly. The ingest script handles key ordering, bank detection, and merge/delete logic automatically.
 
 ---
 
@@ -1087,12 +1170,15 @@ This prevents the common failure mode of starting to write comments mid-read and
 The typical audit requires at minimum two extraction runs (standard → `extract:lt`), plus a final verification. To minimize round-trips:
 
 1. **First read:** Read the standard-extracted `.asm` file (already available in `extracted/`). No extraction needed if it's up to date.
-2. **After writing block/part notes:** Run `extract:lt`. This both verifies the note injection and provides addresses for comment work. Read the file once for both purposes.
-3. **After writing comments:** Run standard `extract` for the final verification.
+2. **Run `extract:lt`:** This provides addresses for comment work and shows existing annotations. Edit the file directly — add block notes, part notes, and inline comments.
+3. **Run `npm run ingest`:** Synchronize all edits into `notes/` JSON files. This handles additions, updates, and deletions automatically.
+4. **Run standard `extract`:** Final verification that everything appears correctly.
 
 If the file hasn't changed since the last extraction, skip the extraction — just read the existing file.
 
 ### Navigating the JSON files
+
+> **Note:** With the ingest script (`npm run ingest`), agents no longer need to manually edit JSON files. Edit the `.asm` files directly and run `ingest`. This section is retained for understanding the file structure and for manual inspection/debugging.
 
 The note and comment JSON files are organized by bank. To find the right file and position:
 
@@ -1111,11 +1197,12 @@ When auditing such files:
 
 ### Comment authoring tips for agents
 
-1. **One comment per logical operation.** Don't comment every instruction — aggregate sequences into a single explanation at the first meaningful instruction.
-2. **Avoid restating the instruction.** `PHX ; Save X` adds no value. Instead, explain *why* X is being saved: `PHX ; Preserve actor index across flag lookup`.
-3. **Document non-obvious values.** Magic numbers, bitmask meanings, hardware register purposes, and sentinel return values always need comments.
-4. **Cross-reference shared patterns.** When the same code pattern appears in multiple routines, comment it thoroughly the first time and abbreviate on subsequent occurrences.
-5. **Maintain consistent style.** Don't start some comments with verbs and others with nouns. Pick a consistent pattern per routine type.
+1. **Edit `.asm` files, not JSON.** Use `npm run extract:lt` to get address-tagged output, edit the `.asm` file directly, then run `npm run ingest`. Never manually edit `notes/` JSON files.
+2. **One comment per logical operation.** Don't comment every instruction — aggregate sequences into a single explanation at the first meaningful instruction.
+3. **Avoid restating the instruction.** `PHX ; Save X` adds no value. Instead, explain *why* X is being saved: `PHX ; Preserve actor index across flag lookup`.
+4. **Document non-obvious values.** Magic numbers, bitmask meanings, hardware register purposes, and sentinel return values always need comments.
+5. **Cross-reference shared patterns.** When the same code pattern appears in multiple routines, comment it thoroughly the first time and abbreviate on subsequent occurrences.
+6. **Maintain consistent style.** Don't start some comments with verbs and others with nouns. Pick a consistent pattern per routine type.
 
 ### Handling wrapper families
 
@@ -1130,7 +1217,7 @@ Many engines have families of near-identical wrapper routines (e.g., `SetFlag_01
 
 The following would significantly reduce the time and context required for documentation work:
 
-**1. Inline comment ingestion** — Let agents write comments directly in `extract:lt` output files, then run a tool to convert them to JSON. This eliminates the JSON key-value authoring step, which is the most error-prone part of the workflow.
+**1. ~~Inline comment ingestion~~ ✅ IMPLEMENTED** — The `npm run ingest` command lets agents write all annotations (block notes, part notes, and inline comments) directly in the extracted `.asm` files, then synchronize them to JSON. Supports additions, updates, and deletions. See [Notes Ingestion Script](#implemented-notes-ingestion-script-npm-run-ingest).
 
 **2. Coverage audit report** — A single command (`npm run audit:coverage`) that reports which blocks have block notes, which routines have part notes, which routines have inline comments, and which `names.json` labels are still generic. This would let agents instantly identify what needs attention without manually scanning multiple JSON files.
 
@@ -1151,11 +1238,9 @@ Quick reference for the complete annotation workflow:
 - [ ] Count every named routine — verify any existing block note count is accurate
 - [ ] Determine the bank number (floor(start_address / 65536)) — all notes go in `bankNN.json` files
 - [ ] Audit `names.json`: rename generic labels (`code_XXXXXX`), fix misleading names
-- [ ] Write the block note in `notes/blockNotes/bankNN.json` — include accurate counts
-- [ ] Write part notes for all named routines in `notes/partNotes/bankNN.json`
-- [ ] Verify part note keys match `names.json` values exactly (case-sensitive)
 - [ ] Run `npm run extract:lt` to get address-tagged output
-- [ ] Write inline comments in `notes/comments/bankNN.json`, using `; {address}` values as keys
+- [ ] Edit the `.asm` file directly: add block note at top, part notes before labels, inline comments after `; {address}` tags
+- [ ] Run `npm run ingest` to synchronize edits into `notes/` JSON files
 - [ ] Run `npm run extract` (standard) and review the final output
 - [ ] Read the file top-to-bottom as a consumer — does it flow? Are the comments helpful without being noisy?
 
@@ -1169,8 +1254,9 @@ Quick reference for verifying and improving existing annotations:
 - [ ] Audit `names.json` labels: descriptive, follows naming conventions, matches part note keys
 - [ ] Run `npm run extract:lt` to get address-tagged output
 - [ ] For each existing comment: verify address matches the correct instruction, description is accurate (not misplaced or misleading), and adds value (not just restating the instruction)
-- [ ] Remove redundant comment prefixes (e.g., "HandlerName: ..." when the label is already visible above)
+- [ ] Edit the `.asm` file: remove redundant comments, add missing ones, update inaccurate ones
 - [ ] Look for `; {address}` tags in complex routines — these are uncommented lines that may need annotation
 - [ ] Add missing comments following density guidelines (high density for complex logic, low for trivial handlers)
+- [ ] Run `npm run ingest` to synchronize all edits into `notes/` JSON files
 - [ ] Run `npm run extract` (standard) and verify the final output reads naturally
 - [ ] Read the file as a consumer — do annotations flow? Are they accurate and non-redundant?

@@ -1,0 +1,15 @@
+---
+description: Agents must never run git commit, git push, or any git write operations. Only the user commits.
+alwaysApply: true
+---
+
+# No Agent Git Commits
+
+**Agents must NEVER run `git commit`, `git push`, `git tag`, `git merge`, `git rebase`, `git reset`, `git revert`, or any other git command that modifies repository history or refs.**
+
+Only the user is allowed to commit. When a commit is needed:
+- Prompt the user: "Please commit when you're ready."
+- Provide a suggested commit message if helpful.
+- Do NOT run the commit command yourself.
+
+`git add`, `git status`, `git diff`, `git log`, and other read/stage operations are allowed.
