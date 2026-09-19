@@ -351,13 +351,59 @@ This means:
 
 ## Relationship to names.json
 
-The `names.json` file provides the label names that both part notes and comments reference:
+The `names.json` file (located in the database triad directory, e.g., `db-us/names.json`) provides the label names that both part notes and comments reference:
 
 - **Part notes** are keyed by the label name string (e.g., `"RunCombatCollision"`) — this must match exactly what appears in `names.json` values or what the engine auto-generates as `code_XXXXXX`
 - **Comments** are keyed by the decimal address (e.g., `"244708"`) — this is the same address space as `names.json` keys
 - **Block notes** are keyed by the block name from `blocks.json` (e.g., `"combat_collision"`)
 
 When documenting a block, all three note types should be updated together in their respective `bankNN.json` files to maintain consistency.
+
+## Name Auditing and names.json Maintenance
+
+Names are not just labels — they are the primary human interface to the disassembly. A misleading name is worse than a generic auto-generated one, because it actively misdirects anyone reading the code. Name auditing should be part of every documentation pass.
+
+### When to audit names
+
+After reading a routine's code and writing its part note, verify that the name in `names.json` accurately describes what the routine actually does. Common issues to look for:
+
+- **Generic auto-generated names** (`code_00A1B0`, `sub_00B234`) — replace with descriptive names once you understand the routine's purpose
+- **Misleading names** — a routine named `SetPosition` that actually applies an orbital offset should be renamed to `ApplyOrbitalOffset` to reflect its true behavior
+- **Inconsistent naming conventions** — mixing `camelCase` and `snake_case` within the same functional group, or inconsistent verb prefixes (`Do_` vs `Run_` vs `Execute_`)
+- **Names that describe the mechanism, not the purpose** — `WriteThreeBytes` is less useful than `SetEntryFar`
+- **Inaccurate counts or scope in block notes** — if a block note says "14 handlers" but the file contains 30, the names (and block note) need updating
+
+### How to update names.json
+
+1. Open the names file (e.g., `db-us/names.json`)
+2. Find the address entry (decimal key) for the routine you want to rename
+3. Change the value string to the new name
+4. **Update the corresponding part note key** in `notes/partNotes/bankNN.json` to match the new name exactly
+5. Run `npm run extract` to verify the new label appears correctly in the `.asm` output
+
+**Critical:** Part notes are keyed by the name string. If you rename an address in `names.json` from `"OldName"` to `"NewName"`, you **must** also rename the key in `partNotes/bankNN.json` from `"OldName"` to `"NewName"`. Mismatched keys result in orphaned part notes that never appear in the extracted output. Comments are unaffected by renames because they are keyed by decimal address.
+
+### Names ↔ notes coordination table
+
+| Change | names.json | partNotes | comments |
+|--------|-----------|-----------|----------|
+| Rename a routine | Update value | Rename key to match | No change (keyed by address) |
+| Add a new name | Add entry | Add part note with matching key | No change |
+| Remove a name | Remove entry | Remove or keep orphaned note | No change |
+| Split a routine | Add new name entries | Add new part notes | May need address reassignment |
+
+### Naming conventions
+
+Follow the conventions established in the existing `names.json`:
+
+| Category | Convention | Examples |
+|----------|-----------|----------|
+| COP handlers | `VerbNoun` camelCase | `SetEntryHere`, `JumpAfterDelay`, `BranchOnFlagByte` |
+| Internal subroutines | Descriptive `VerbNoun` | `BuildSineHdmaTable`, `ApplyOrbitalOffsetFromRef` |
+| JSL export helpers | `VerbNoun_Scope` | `SetEventFlag_0200`, `TestWramFlag_Offset100` |
+| Data tables | `lowercase_snake_case` | `bitmasks_bit_position`, `cop_dispatch_table` |
+| Actor scripts | Match actor/scene name | `hidden_red_jewel`, `StairTriggerSouth` |
+| Engine subsystems | `VerbNoun` or `NounVerb` | `RunCombatCollision`, `UpdateFrameRender` |
 
 ## Summary
 
@@ -630,14 +676,15 @@ For simple routines, one or two lines suffice. For complex routines, use the ful
 The recommended process for annotating a new block:
 
 1. **Read the standard extraction** — run `npm run extract` and read the entire `.asm` file end-to-end without writing anything. Understand the code's structure, routines, and relationships.
-2. **Run location-tagged extraction** — run `npm run extract:lt` to produce address-tagged output. Every uncommented instruction now shows its decimal ROM address as `; {address}`.
-3. **Determine the bank** — identify which ROM bank the block lives in (bank = floor(start_address / 65536)).
-4. **Write the block note** — architecture, data formats, WRAM variables. Add to `notes/blockNotes/bankNN.json`.
-5. **Write part notes** for each routine — purpose, parameters, algorithm. Add to `notes/partNotes/bankNN.json`.
-6. **Write inline comments** — read the `extract:lt` output and use the visible `; {address}` tags as JSON keys. Add to `notes/comments/bankNN.json`.
-7. **Audit part names** — verify that `names.json` labels accurately describe each routine.
-8. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
-9. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
+2. **Count and catalog** — count every named routine in the file. Note `?INCLUDE` directives that pull in other blocks. Verify the block note's handler/routine count matches reality.
+3. **Run location-tagged extraction** — run `npm run extract:lt` to produce address-tagged output. Every uncommented instruction now shows its decimal ROM address as `; {address}`.
+4. **Determine the bank** — identify which ROM bank the block lives in (bank = floor(start_address / 65536)).
+5. **Audit names** — check every label in `names.json` for accuracy against the code you just read. Rename generic (`code_XXXXXX`) or misleading labels. See [Name Auditing](#name-auditing-and-namesjson-maintenance).
+6. **Write the block note** — architecture, data formats, WRAM variables. Include accurate routine/handler counts. Add to `notes/blockNotes/bankNN.json`.
+7. **Write part notes** for each routine — purpose, parameters, algorithm. Add to `notes/partNotes/bankNN.json`. Ensure keys match `names.json` values exactly.
+8. **Write inline comments** — read the `extract:lt` output and use the visible `; {address}` tags as JSON keys. Add to `notes/comments/bankNN.json`.
+9. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
+10. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
 
 > **Why two extraction passes?** The first pass (standard) lets you read the code without visual noise from address tags. The second pass (`extract:lt`) reveals every instruction's address so you can write comment JSON keys accurately. The final verification pass (standard again) confirms the comments appear correctly and flow naturally.
 
@@ -657,6 +704,16 @@ Then open the extracted `.asm` file and read through it. The comments should:
 - Complement (not duplicate) the part notes that appear above each routine
 
 To check coverage, you can also run `npm run extract:lt` — any remaining `; {address}` tags indicate uncommented instructions. This is useful for spotting gaps in complex routines that might benefit from additional annotations.
+
+### ⚠ STOP — Read Before Bulk-Modifying Comment JSON Files
+
+**If you are about to write a script that modifies more than 10 comment entries at once, STOP.** Read the [Critical Rules for Comment JSON Manipulation](#critical-rules-for-comment-json-manipulation) section first. Bulk comment manipulation has caused the loss of ~1,000 valid entries. The rules exist to prevent this from happening again.
+
+**Minimum safety protocol:**
+1. `git commit` the current state before ANY bulk changes
+2. Never empty JSON files
+3. Never bulk-shift addresses
+4. Verify each change individually via `extract:lt` output
 
 ### Common Pitfalls
 
@@ -680,9 +737,101 @@ To check coverage, you can also run `npm run extract:lt` — any remaining `; {a
 
 ---
 
+## Critical Rules for Comment JSON Manipulation
+
+These rules exist because violations caused the loss of ~1,000 valid comment entries during a cleanup attempt. **Follow them without exception.**
+
+### Rule 1: NEVER empty comment JSON files
+
+The `extract:lt` mode emits **both** the `{address}` tag AND the existing comment on the same line:
+
+```asm
+    LDA $00B2             ; {39414} Check if VRAM DMA is pending
+    BEQ loc_0099FE        ; {39417} No DMA pending: continue
+    PLA                   ; {39419}
+```
+
+Lines WITH a comment show: `; {address} comment text`
+Lines WITHOUT a comment show: `; {address}`
+
+You can verify any comment by reading the extract:lt output directly. There is **no reason** to empty the JSON files to build a "clean" address map. Emptying and re-extracting destroys the ability to compare old vs. new state and risks data loss if the empty files are not properly restored.
+
+### Rule 2: NEVER do bulk address shifting
+
+If comments appear to be at wrong addresses, **do not** write a script to shift them all by ±1/±2. This was the primary cause of data loss. What happens:
+
+1. Two comments exist at addresses N and N+1 for the same instruction (one correct, one off-by-one)
+2. The "fix" script shifts N+1 → N+2, which is a DIFFERENT instruction
+3. The good comment at N is now paired with a nonsensical comment at N+2
+4. Or worse: the script deduplicates and keeps the WRONG one
+
+**Instead:** Verify each suspect comment individually by reading the `extract:lt` output. The correct address is visible right there. Fix one at a time.
+
+### Rule 3: Always commit or snapshot before bulk modifications
+
+Before running ANY script that modifies comment JSON files:
+
+```bash
+git add notes/comments/
+git commit -m "snapshot: pre-audit baseline"
+```
+
+This allows instant rollback if a script damages the data. Without this, recovery requires manually reconstructing hundreds of entries.
+
+### Rule 4: Comments without extract:lt tags are for auto-discovered files
+
+Many comments are at addresses that will NOT appear as `{address}` tags in the `extract:lt` output. These are for **auto-discovered files** — assembly files without explicit `?BANK` directives that the engine finds through code analysis. Examples include actor scripts, thinker scripts, and shared function files.
+
+These comments are **valid and correct**. Do not delete them just because they don't match a tagged address. If you can't verify a comment via extract:lt, leave it alone.
+
+### Rule 5: Read the extract:lt output — don't build parallel data structures
+
+The extract:lt output IS the verification tool. For every instruction with a comment, it shows:
+```
+    INSTRUCTION           ; {address} comment text
+```
+
+Read this output and visually verify that the comment describes the instruction. Do not:
+- Build a separate Map/Set of addresses from the extract output
+- Write scripts that compare JSON keys against address sets
+- Attempt to "reconcile" two data sources
+
+These parallel approaches introduce their own bugs (regex mismatches, path resolution errors, file encoding issues) that compound into data loss.
+
+### Rule 6: One file at a time, verify as you go
+
+When adding comments to a file:
+
+1. Run `extract:lt` and read the target file
+2. Note the `{address}` values on uncommented lines
+3. Add comments to the JSON using those exact addresses
+4. Run `extract:lt` again and verify the new comments appear on the correct instructions
+5. Only then move to the next file
+
+Do NOT batch-add comments for 10 files and then verify. Errors in one batch contaminate the next.
+
+---
+
 ## Process Improvements and Lessons Learned
 
 This section captures workflow improvements discovered through practical annotation experience.
+
+### Problem: Address Contamination Across Overlapping Files
+
+Multiple engine files can occupy overlapping address ranges. For example, in Bank 00:
+- `cop_handlers_solid.asm`: 34382–46208
+- `cop_handlers_flags.asm`: 45150–46336
+- `actor_pool.asm`: 44864–46367
+
+When adding comments for one file using addresses read from a DIFFERENT extract:lt run (where comments shifted the tags), the addresses can land in a completely different file's range. This caused ~107 movement handler comments to overwrite flag handler addresses.
+
+**Prevention:** Always read addresses from the CURRENT extract:lt output. Never carry addresses across extraction runs. If you add comments and re-extract, the tags shift — re-read the fresh output.
+
+### Problem: Off-by-One Address Cascades
+
+When the extract:lt output has a comment on line N, the `{address}` tag on that line is consumed by the comment display. If you read the NEXT line's tag (N+1) and mistakenly assign it to the comment you're writing for line N, every subsequent comment is shifted by one instruction. This cascading off-by-one affected ~500 entries.
+
+**Prevention:** The `{address}` tag on a commented line is STILL VISIBLE in the extract:lt output — it appears as `; {39414} existing comment text`. Read the address from the SAME line you're annotating, not from adjacent lines.
 
 ### Problem: Manual Address Computation Was Error-Prone
 
@@ -809,29 +958,219 @@ An optimized flow could provide the agent with a **diff-oriented view** — only
 
 Another option: a tool that accepts comments in a more natural format (e.g., inline in the ASM after the `; {address}` tag) and converts them to JSON. The agent could edit the `extract:lt` output directly, replacing `; {230620}` with `; BCD mode: packed decimal`, and a converter would parse the file and produce the corresponding `notes/comments/bankNN.json` entries. This would eliminate the JSON key-value authoring step entirely.
 
+### Future Improvement: Inline Comment Ingestion (`ingest:comments`)
+
+The largest friction point for agents is the round-trip between reading `extract:lt` output and writing JSON keys. An `ingest:comments` tool would allow agents to write comments directly in the extracted `.asm` files:
+
+1. Run `npm run extract:lt` to produce address-tagged output
+2. Edit the `.asm` file directly, replacing `; {230620}` with `; BCD mode: packed decimal`
+3. Run `npm run ingest:comments` to parse the edited file, extract all `;`-prefixed text on lines that previously had `; {address}` tags, and write the corresponding entries to `notes/comments/bankNN.json`
+
+This would eliminate the need for agents to:
+- Open and navigate large JSON files to find insertion points
+- Maintain ascending address order manually
+- Cross-reference between `.asm` and `.json` files during authoring
+
+The tool would need to distinguish between original comments (already in JSON, preserved as-is) and newly-written comments (need JSON ingestion). This could be done by comparing the edited file against a fresh `extract:lt` baseline.
+
+### Future Improvement: Block Audit Report (`audit:blocks`)
+
+An automated audit report would help agents and humans prioritize documentation work:
+
+```
+# Example output
+Block: cop_handlers_flow (bank00)
+  Block note: ✓ exists
+  Part notes: 28/30 routines covered (missing: WaitByte, WaitWord)
+  Comments:   18 comments across 487 instructions (3.7% coverage)
+  Names:      0 generic labels remaining
+  Coverage:   ██████░░░░ 60% — complex routines SwitchCase, BranchOnFlagWord under-documented
+
+Block: combat_collision (bank03)
+  Block note: ✗ missing
+  Part notes: 3/12 routines covered
+  Comments:   0 comments across 892 instructions
+  Names:      4 generic labels (code_03A1B0, code_03A2F4, code_03A380, code_03A4C2)
+  Coverage:   ░░░░░░░░░░ 0% — needs full documentation pass
+```
+
+This would combine `names.json` scanning (flag generic labels), part note coverage (which named routines lack notes), comment density (instructions per comment ratio), and block note presence into a single actionable report.
+
+### Future Improvement: Part Note Templates
+
+Common routine patterns appear repeatedly across blocks. Template-based generation would accelerate documentation for agents:
+
+- **COP handler template:** `COP #XX with [operand description]. [Purpose sentence]. [Implementation detail].`
+- **JSL wrapper template:** `JSL helper that [verb] a [noun] at base $XXXX. Masks to byte, adds $XXXX, and calls [CoreRoutine].`
+- **Data table template:** `[Count]-entry [format] lookup table mapping [input] to [output]. Used by [callers].`
+
+Agents could detect the pattern from the code structure (e.g., a routine that only does `AND, CLC, ADC, JSR, RTL` is clearly a JSL offset wrapper) and apply the appropriate template with filled-in specifics.
+
+---
+
+## Practical Audit Patterns
+
+This section captures specific patterns and pitfalls discovered through auditing multiple COP handler and engine files.
+
+### Block notes often drift from reality
+
+Block notes are written once and rarely updated as the codebase evolves. Common drift patterns:
+
+- **Inaccurate counts.** A block note says "14 handlers" but the file contains 30. Always manually count every named part in the `.asm` file.
+- **Cross-file references.** A block note describes routines that are actually in a *different* file due to `?INCLUDE` dependencies. For example, a "flow" block note mentioning `PrintDialogString` when that handler lives in `cop_handlers_input`. Block notes should describe only what is physically in their own `.asm` file, with cross-references to related blocks rather than claiming ownership.
+- **Scope creep.** Over time, new routines get added to a block but the block note is never updated to mention them. The handler categories and descriptions become incomplete.
+
+**Fix pattern:** Read the file, count every part, categorize them into logical groups, and rewrite the block note with accurate numbers and organized subsections.
+
+### Part notes for trivial routines are still valuable
+
+It's tempting to skip part notes for one-liner JSL wrappers like `TestFlag_0300` (which is just `AND, CLC, ADC #$0300, JSR TestEventFlag, RTL`). But these routines are called from *many* places in the codebase, and a reader encountering `JSL TestFlag_0300` in an actor script needs to know what the `$0300` scope means without navigating to the wrapper code.
+
+**Rule of thumb:** Every named routine should have a part note, even if it's a single sentence. For families of similar wrappers, the notes can follow a consistent template (see "Part Note Templates" above).
+
+### Comment prefixes are redundant with labels
+
+A common pattern in early documentation is prefixing comments with the routine name:
+
+```asm
+STA $00               ; JumpAfterDelay: save resume PC in actor $00
+```
+
+Since the routine label `JumpAfterDelay {` appears directly above this code block, the prefix is redundant. Prefer:
+
+```asm
+STA $00               ; Store target script pointer in actor EntryPtr ($00) for deferred resume
+```
+
+This makes the comment valuable to someone reading mid-routine (where the label may have scrolled offscreen) without repeating information that's immediately visible.
+
+### Verifying comment placement with extract:lt
+
+When auditing existing comments, run `extract:lt` and check that each comment appears on the instruction you expect. Common misplacements:
+
+- **Comment on the wrong instruction of a group.** A comment describing "the return convention" placed on a `LSR` instruction 20 bytes before the actual `SEC`/`CLC` return code.
+- **Comment orphaned by code changes.** If a routine was reorganized, comment addresses may point at the wrong instructions or even at data bytes.
+- **Off-by-one from manual address computation.** Pre-`extract:lt` comments computed by hand may be 1–2 bytes off from the actual instruction.
+
+**Fix pattern:** For each existing comment, find its address in the `extract:lt` output. Verify the instruction at that address matches what the comment describes. If misaligned, delete the old address key and add a new one at the correct address.
+
+### Working efficiently with large JSON files
+
+Comment files can have hundreds of entries. For agents working with these files:
+
+1. **Search, don't scan.** Use grep/search to find entries by address range (e.g., `"435"` to find all addresses in the 43500–43599 range).
+2. **Read targeted ranges.** Use line-offset reads around the addresses you need to modify, not full file reads.
+3. **Insert with context.** When adding new entries, find the two surrounding address keys and use them as the unique context string for the replacement. Always maintain ascending address order.
+4. **Batch related changes.** Group all comment additions for one routine into a single insertion point rather than making one edit per comment.
+
+---
+
+## Agent Workflow Recommendations
+
+This section provides specific guidance for AI agents performing documentation work on baserom projects.
+
+### Pre-work: Create a structured plan
+
+Before modifying any files, read the target `.asm` file completely and create a structured checklist covering:
+
+1. **Block note accuracy** — handler/routine count, descriptions match file contents
+2. **Missing or inaccurate part notes** — list by routine name
+3. **Name auditing** — generic or misleading labels in `names.json`
+4. **Existing comments to correct** — misplaced, inaccurate, or redundant
+5. **New comments to add** — identify which routines need them and at what density
+6. **Verification** — plan the final extraction and review
+
+This prevents the common failure mode of starting to write comments mid-read and losing track of the remaining work.
+
+### Batching extractions efficiently
+
+The typical audit requires at minimum two extraction runs (standard → `extract:lt`), plus a final verification. To minimize round-trips:
+
+1. **First read:** Read the standard-extracted `.asm` file (already available in `extracted/`). No extraction needed if it's up to date.
+2. **After writing block/part notes:** Run `extract:lt`. This both verifies the note injection and provides addresses for comment work. Read the file once for both purposes.
+3. **After writing comments:** Run standard `extract` for the final verification.
+
+If the file hasn't changed since the last extraction, skip the extraction — just read the existing file.
+
+### Navigating the JSON files
+
+The note and comment JSON files are organized by bank. To find the right file and position:
+
+1. **Bank file:** Comments for addresses 32768–65535 → `bank00.json`, 163840–196607 → `bank02.json`, etc.
+2. **Finding insertion point:** Search for the nearest existing address key. Comments must be in ascending address order.
+3. **Cross-referencing names:** Search `names.json` for the routine address (decimal key) to get the label. Search `partNotes/bankNN.json` for that label to check for an existing part note.
+
+### Handling multi-block files
+
+Some `.asm` files contain routines from multiple logical blocks due to `?INCLUDE` directives. For example, `cop_handlers_flow.asm` includes `cop_handlers_flags` and `inventory_mgmt`. Each included block has its own block note and its routines have separate part notes, but they all appear in a single extracted file.
+
+When auditing such files:
+- The block note for the **host** file should describe the routines in that file, not the included dependencies
+- Part notes for included routines belong to the included block's bank file (usually the same bank)
+- Comments are always keyed by address regardless of which block "owns" the routine
+
+### Comment authoring tips for agents
+
+1. **One comment per logical operation.** Don't comment every instruction — aggregate sequences into a single explanation at the first meaningful instruction.
+2. **Avoid restating the instruction.** `PHX ; Save X` adds no value. Instead, explain *why* X is being saved: `PHX ; Preserve actor index across flag lookup`.
+3. **Document non-obvious values.** Magic numbers, bitmask meanings, hardware register purposes, and sentinel return values always need comments.
+4. **Cross-reference shared patterns.** When the same code pattern appears in multiple routines, comment it thoroughly the first time and abbreviate on subsequent occurrences.
+5. **Maintain consistent style.** Don't start some comments with verbs and others with nouns. Pick a consistent pattern per routine type.
+
+### Handling wrapper families
+
+Many engines have families of near-identical wrapper routines (e.g., `SetFlag_0100`, `SetFlag_0300`, `TestFlag_0510`). For these:
+
+1. **Write a thorough part note for the core routine** explaining the full algorithm (e.g., `SetEventFlag` with its byte/bit decomposition)
+2. **Write one-line template part notes for each wrapper** stating the base offset and scope meaning
+3. **Skip inline comments for wrappers** — the part note provides sufficient context
+4. **Add one inline comment on the core routine's key instruction** (e.g., the bitmask lookup or bit decomposition)
+
+### Suggested improvements that would make this process more manageable
+
+The following would significantly reduce the time and context required for documentation work:
+
+**1. Inline comment ingestion** — Let agents write comments directly in `extract:lt` output files, then run a tool to convert them to JSON. This eliminates the JSON key-value authoring step, which is the most error-prone part of the workflow.
+
+**2. Coverage audit report** — A single command (`npm run audit:coverage`) that reports which blocks have block notes, which routines have part notes, which routines have inline comments, and which `names.json` labels are still generic. This would let agents instantly identify what needs attention without manually scanning multiple JSON files.
+
+**3. Name audit report** — A tool that scans `names.json` for generic labels (`code_XXXXXX`, `sub_XXXXXX`, `loc_XXXXXX` at part boundaries) and reports them as candidates for renaming.
+
+**4. Part note scaffolding** — A tool that generates template part notes for all named routines that lack them, using pattern detection (COP handler → COP handler template, 5-instruction JSL wrapper → wrapper template, data table → table template). Agents could then review and refine rather than writing from scratch.
+
+**5. Validation on extract** — Run basic validation during `npm run extract` that warns about orphaned part notes (keys not matching any `names.json` value), missing part notes for named routines, and comment addresses that don't match any instruction. Currently agents discover these issues only through manual verification.
+
+**6. Reduced context requirements** — The current workflow requires holding the entire `.asm` file, three JSON files, and `names.json` in context simultaneously. A focused audit view that shows one routine at a time with its part note, comments, and `names.json` entry would let agents work routine-by-routine instead of file-by-file.
+
 ### Checklist: Annotating a New Block
 
 Quick reference for the complete annotation workflow:
 
 - [ ] Run `npm run extract` and read the entire `.asm` file
 - [ ] Identify all routines and their relationships
+- [ ] Count every named routine — verify any existing block note count is accurate
 - [ ] Determine the bank number (floor(start_address / 65536)) — all notes go in `bankNN.json` files
-- [ ] Write the block note in `notes/blockNotes/bankNN.json`
+- [ ] Audit `names.json`: rename generic labels (`code_XXXXXX`), fix misleading names
+- [ ] Write the block note in `notes/blockNotes/bankNN.json` — include accurate counts
 - [ ] Write part notes for all named routines in `notes/partNotes/bankNN.json`
+- [ ] Verify part note keys match `names.json` values exactly (case-sensitive)
 - [ ] Run `npm run extract:lt` to get address-tagged output
 - [ ] Write inline comments in `notes/comments/bankNN.json`, using `; {address}` values as keys
-- [ ] Verify `names.json` labels match part note keys exactly
 - [ ] Run `npm run extract` (standard) and review the final output
 - [ ] Read the file top-to-bottom as a consumer — does it flow? Are the comments helpful without being noisy?
 
-### Checklist: Auditing Existing Comments
+### Checklist: Auditing an Existing Block
 
-Quick reference for verifying existing annotations:
+Quick reference for verifying and improving existing annotations:
 
-- [ ] Run `npm run extract:lt` and open the target `.asm` file
-- [ ] For each commented line, verify the adjacent `; {address}` tags form a consistent sequence (no gaps or overlaps)
-- [ ] Check that comments on independent instructions describe only their own operation (no multi-instruction descriptions on single COP commands)
-- [ ] Verify part note keys match `names.json` labels exactly (case-sensitive)
-- [ ] Check that block note key matches the block name in `blocks.json` and is in the correct bank file
+- [ ] Run `npm run extract` and read the entire `.asm` file end-to-end
+- [ ] Verify block note: correct handler/routine count, descriptions match file contents, no references to routines in other files
+- [ ] For each named routine: verify part note exists and accurately describes the code
+- [ ] Audit `names.json` labels: descriptive, follows naming conventions, matches part note keys
+- [ ] Run `npm run extract:lt` to get address-tagged output
+- [ ] For each existing comment: verify address matches the correct instruction, description is accurate (not misplaced or misleading), and adds value (not just restating the instruction)
+- [ ] Remove redundant comment prefixes (e.g., "HandlerName: ..." when the label is already visible above)
 - [ ] Look for `; {address}` tags in complex routines — these are uncommented lines that may need annotation
-- [ ] Re-read comments as a consumer — do they add value? Are any just restating the instruction?
+- [ ] Add missing comments following density guidelines (high density for complex logic, low for trivial handlers)
+- [ ] Run `npm run extract` (standard) and verify the final output reads naturally
+- [ ] Read the file as a consumer — do annotations flow? Are they accurate and non-redundant?
