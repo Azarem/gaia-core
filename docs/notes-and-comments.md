@@ -359,21 +359,137 @@ The `names.json` file (located in the database triad directory, e.g., `db-us/nam
 
 When documenting a block, all three note types should be updated together in their respective `bankNN.json` files to maintain consistency.
 
-## Name Auditing and names.json Maintenance
+## Name Auditing
 
 Names are not just labels — they are the primary human interface to the disassembly. A misleading name is worse than a generic auto-generated one, because it actively misdirects anyone reading the code. Name auditing should be part of every documentation pass.
 
+There are **three distinct naming layers** that may need auditing. Each layer controls a different scope of labels in the extracted `.asm` output:
+
+| Layer | File | Controls | Generic patterns |
+|-------|------|----------|-----------------|
+| **Block names** | `blocks.json` | Top-level block keys and `.asm` filenames | `actor_XXXXXX`, `sF7_actor_XXXXXX`, `func_XXXXXX`, `dm_func_XXXXXX` |
+| **Part names** | `blocks.json` | Keys within a block's `"parts": {}` — routine headers for explicitly mapped pieces | `func_XXXXXX`, `sub_XXXXXX`, `binary_XXXXXX`, `e_actor_XXXXXX` |
+| **Code names** | `names.json` | Labels for auto-discovered code pieces (not in `blocks.json` parts) | `code_XXXXXX`, `loc_XXXXXX` |
+
+Understanding which layer controls a given label is essential — renaming in the wrong file has no effect.
+
+### How the engine resolves label names
+
+1. **`blocks.json` parts** take first priority. If a piece is explicitly defined as a part in `blocks.json`, its **key name in the JSON** becomes the label in the extracted `.asm`. These appear as `func_XXXXXX`, `sub_XXXXXX`, `binary_XXXXXX`, `actor_XXXXXX`, and `e_actor_XXXXXX` prefixed labels.
+
+2. **`names.json`** provides labels for auto-discovered pieces — code the engine finds through reference tracing and branch analysis that is **not** explicitly mapped in `blocks.json` parts. These appear as `code_XXXXXX` prefixed labels when unnamed. A `names.json` entry at the piece's start address overrides the auto-generated `code_XXXXXX` label.
+
+3. **`overrides.json`** does **not** support naming. The `"name"` key in overrides is deprecated and non-functional. Do not use it.
+
+**Key implication:** If you see a `func_08D7EA` label in the `.asm` output and add an entry to `names.json` at that address, it will have **no effect** — because that label comes from a `blocks.json` part key, which takes precedence. To rename it, you must change the key in `blocks.json`.
+
 ### When to audit names
 
-After reading a routine's code and writing its part note, verify that the name in `names.json` accurately describes what the routine actually does. Common issues to look for:
+After reading a routine's code and writing its part note, verify that the name accurately describes what the routine actually does. Common issues to look for:
 
-- **Generic auto-generated names** (`code_00A1B0`, `sub_00B234`) — replace with descriptive names once you understand the routine's purpose
+- **Generic auto-generated names** (`code_00A1B0`, `sub_00B234`, `actor_08B577`) — replace with descriptive names once you understand the routine's purpose
 - **Misleading names** — a routine named `SetPosition` that actually applies an orbital offset should be renamed to `ApplyOrbitalOffset` to reflect its true behavior
 - **Inconsistent naming conventions** — mixing `camelCase` and `snake_case` within the same functional group, or inconsistent verb prefixes (`Do_` vs `Run_` vs `Execute_`)
 - **Names that describe the mechanism, not the purpose** — `WriteThreeBytes` is less useful than `SetEntryFar`
 - **Inaccurate counts or scope in block notes** — if a block note says "14 handlers" but the file contains 30, the names (and block note) need updating
 
-### How to update names.json
+### Auditing block names in blocks.json
+
+Block names are the top-level keys within each group in `blocks.json`. They control both the label used in code and the extracted `.asm` filename. Generic block names follow patterns like:
+
+- `actor_XXXXXX` — unnamed actor definition
+- `sF7_actor_XXXXXX` — scene-prefixed actor (ending scene F7)
+- `func_XXXXXX` — unnamed standalone function
+- `dm_func_XXXXXX` — area-prefixed unnamed function (diamond mine)
+- `binary_XXXXXX` — unnamed data block
+- `misc_actors_XXXXXX` — generic multi-actor block
+- `crF7_proc_XXXXXX` — scene-prefixed thinker process
+
+**How to find generic block names:**
+
+```python
+import json, re
+with open('db-us/blocks.json') as f:
+    blocks = json.load(f)
+
+# Match: optional scene prefix + generic type + hex address
+generic_pat = re.compile(
+    r'^([a-z]{1,4}\d*_)*(actor|func|sub|binary|code|loc|'
+    r'e_actor|dm_func|misc_actors|proc)_[0-9A-Fa-f]{4,}'
+)
+
+for group_name, group_data in blocks.items():
+    if isinstance(group_data, dict):
+        for block_name, block_data in group_data.items():
+            if isinstance(block_data, dict) and generic_pat.match(block_name):
+                print(f'{group_name}/{block_name}')
+```
+
+**How to rename a block:**
+
+1. Read the extracted `.asm` file for the block — understand what it does
+2. Choose a descriptive name following the naming conventions below
+3. **Preserve the scene/area prefix** if present (e.g., `sF7_`, `ec12_`, `gw85_`, `dm41_`) — these encode the scene ID and area, which is valuable organizational context
+4. Use a targeted string replacement in `blocks.json` — replace `"old_name":` with `"new_name":` (include the colon to avoid partial matches)
+5. **Do not use `json.dump()`** to rewrite the entire file — this destroys the compact formatting. Use string replacement or a formatting-preserving script
+6. Update `names.json` if the block's start address needs a matching label
+7. Run `npm run extract` to verify the rename propagated correctly
+
+**Example renames:**
+
+| Before | After | Rationale |
+|--------|-------|-----------|
+| `actor_08B577` | `camera_delta_oscillator` | Increments/decrements cameraDeltaY based on facing |
+| `sF7_actor_09DFF8` | `sF7_credits_player` | Credits scene player character with timeline choreography |
+| `ec12_actor_09BF6B` | `ec12_aqueduct_dark_space` | Spawns dark space portal after flag check |
+| `func_09BB17` | `CollisionLayerRenderer` | Reads scroll state and renders collision tilemap |
+| `dm_func_0ADB6B` | `dm_follower_behavior` | Diamond mine follower NPC using smooth_follow |
+| `binary_0BACB4` | `mummy_queen_angle_table` | 8-byte angle lookup for mummy queen boss |
+
+**⚠ Critical formatting rule:** `blocks.json` uses a specific compact format where simple blocks are one line and complex blocks (with parts) are multi-line. Never load and re-dump the entire file with `json.dump()` — this reformats everything. Instead, use targeted string replacement:
+
+```python
+with open('db-us/blocks.json', 'r') as f:
+    content = f.read()
+content = content.replace('"old_block_name":', '"new_block_name":', 1)
+with open('db-us/blocks.json', 'w') as f:
+    f.write(content)
+```
+
+### Auditing part names in blocks.json
+
+Part names are the keys within a block's `"parts": {}` object. They control labels for explicitly mapped code/data pieces. When a block has parts, each part key becomes the label in the extracted `.asm`. Generic part names follow the same patterns as block names (`func_XXXXXX`, `sub_XXXXXX`, `binary_XXXXXX`, `e_actor_XXXXXX`).
+
+**How to find generic part names:**
+
+```python
+def scan_parts(data, path=''):
+    for key, value in data.items():
+        if isinstance(value, dict):
+            if 'parts' in value:
+                for part_name in value['parts']:
+                    if generic_pat.match(part_name):
+                        print(f'{path}/{key}/parts/{part_name}')
+            scan_parts(value, f'{path}/{key}' if path else key)
+
+scan_parts(blocks)
+```
+
+**How to rename a part:**
+
+1. Read the code at the part's address range to understand what it does
+2. Rename the key in `blocks.json` using targeted string replacement (same formatting rules as block renames)
+3. Add a corresponding entry in `names.json` mapping the part's start address (decimal) to the new name
+4. Update any part notes in `notes/partNotes/bankNN.json` to use the new key
+5. Run `npm run extract` to verify
+
+**When to defer part renames:** During a block-level audit pass, focus on block names. Part names can be deferred to the full per-file annotation audit, where you're already reading each routine in detail and writing part notes.
+
+### Auditing code names in names.json
+
+Code names are entries in `names.json` that label auto-discovered pieces. These are the most common rename target because the engine generates large numbers of `code_XXXXXX` labels automatically.
+
+**How to update names.json:**
 
 1. Open the names file (e.g., `db-us/names.json`)
 2. Find the address entry (decimal key) for the routine you want to rename
@@ -385,16 +501,118 @@ After reading a routine's code and writing its part note, verify that the name i
 
 ### Names ↔ notes coordination table
 
-| Change | names.json | partNotes | comments |
-|--------|-----------|-----------|----------|
-| Rename a routine | Update value | Rename key to match | No change (keyed by address) |
-| Add a new name | Add entry | Add part note with matching key | No change |
-| Remove a name | Remove entry | Remove or keep orphaned note | No change |
-| Split a routine | Add new name entries | Add new part notes | May need address reassignment |
+| Change | blocks.json | names.json | partNotes | comments |
+|--------|------------|-----------|-----------|----------|
+| Rename a block | Update block key | Add/update start address entry | No change (keyed by block name, not parts) | No change |
+| Rename a part | Update part key | Add/update start address entry | Rename key to match | No change |
+| Rename a code piece | No change | Update value | Rename key to match | No change (keyed by address) |
+| Add a new name | No change | Add entry | Add part note with matching key | No change |
+| Remove a name | No change | Remove entry | Remove or keep orphaned note | No change |
+| Split a routine | May add new parts | Add new name entries | Add new part notes | May need address reassignment |
+
+### Rename propagation checklist
+
+When renaming a block, part, or code piece, **all references to the old name must be updated across multiple files**. Missing any step creates "orphaned" notes — annotations that exist in JSON but never appear in the extracted `.asm` because their key no longer matches any entity.
+
+**Block rename (key in `blocks.json` top-level within a group):**
+
+1. Rename the key in `blocks.json` via targeted string replacement
+2. Add/update `names.json` entry at the block's start address
+3. Rename the key in `notes/blockNotes/bankNN.json`
+4. Find-and-replace the old name inside the **text content** of all `notes/` JSON files (block notes, part notes, and comments may reference the old name in their description text)
+5. Run `npm run extract` to verify
+
+**Part rename (key within a block's `"parts": {}` in `blocks.json`):**
+
+1. Rename the part key in `blocks.json` via targeted string replacement
+2. Add/update `names.json` entry at the part's start address
+3. Rename the key in `notes/partNotes/bankNN.json` (find the entry under the parent block's key group)
+4. Find-and-replace the old name inside the **text content** of all `notes/` JSON files
+5. Run `npm run extract` to verify
+
+**Code name rename (value in `names.json`):**
+
+1. Update the value in `names.json`
+2. Rename the key in `notes/partNotes/bankNN.json`
+3. Find-and-replace the old name inside the **text content** of all `notes/` JSON files
+4. Run `npm run extract` to verify
+
+**Bulk rename verification script:**
+
+After any batch of renames, run this check to detect orphaned note keys:
+
+```python
+import json, os, re
+
+with open('db-us/blocks.json', encoding='utf-8') as f:
+    blocks_data = json.load(f)
+with open('db-us/names.json', encoding='utf-8') as f:
+    names = json.load(f)
+
+# Collect all valid block names, part names, and named code labels
+block_names = set()
+part_names_by_block = {}  # block_name -> set of part names
+name_values = set(names.values())
+
+for category, cat_data in blocks_data.items():
+    if isinstance(cat_data, dict):
+        for bname, bdata in cat_data.items():
+            if isinstance(bdata, dict):
+                block_names.add(bname)
+                if 'parts' in bdata and isinstance(bdata['parts'], dict):
+                    part_names_by_block[bname] = set(bdata['parts'].keys())
+
+# Check block notes
+for fname in sorted(os.listdir('notes/blockNotes')):
+    if not fname.endswith('.json'): continue
+    with open(f'notes/blockNotes/{fname}', encoding='utf-8') as f:
+        for key in json.load(f):
+            if key not in block_names:
+                print(f'ORPHANED blockNote: {fname}: "{key}"')
+
+# Check part notes
+for fname in sorted(os.listdir('notes/partNotes')):
+    if not fname.endswith('.json'): continue
+    with open(f'notes/partNotes/{fname}', encoding='utf-8') as f:
+        for key in json.load(f):
+            if key in block_names: continue  # Valid block-level part note
+            if key in name_values: continue  # Valid named code piece
+            if any(key in parts for parts in part_names_by_block.values()):
+                continue  # Valid part name
+            print(f'ORPHANED partNote: {fname}: "{key}"')
+```
+
+**Stale text reference detection:**
+
+Old names can also appear inside note *text content* (e.g., a block note that says "calls func_08D7EA"). After renames, scan for stale references:
+
+```python
+# Build old-name -> new-name mapping from names.json
+old_to_new = {}
+for addr, name in names.items():
+    hex_addr = format(int(addr), '06X')
+    for prefix in ['code_', 'func_', 'sub_', 'binary_', 'loc_',
+                    'actor_', 'e_actor_', 'dialogstring_']:
+        old_label = f'{prefix}{hex_addr}'
+        if old_label != name:
+            old_to_new[old_label] = name
+
+# Scan all note files for stale references
+for note_dir in ['notes/partNotes', 'notes/blockNotes', 'notes/comments']:
+    for fname in sorted(os.listdir(note_dir)):
+        if not fname.endswith('.json'): continue
+        with open(f'{note_dir}/{fname}', encoding='utf-8') as f:
+            content = f.read()
+        for old_label, new_name in old_to_new.items():
+            if old_label in content:
+                print(f'STALE REF: {note_dir}/{fname}: {old_label} -> {new_name}')
+```
+
+⚠ **When replacing old names in text content**, beware of substring matches. If `actor_0BC9BD` is replaced with `sFC_actor_0BC9BD`, but the text already contains `sFC_actor_0BC9BD`, you'll get the double-prefix `sFC_sFC_actor_0BC9BD`. Use word-boundary-aware replacement or check for existing prefixes before replacing.
 
 ### Naming conventions
 
-Follow the conventions established in the existing `names.json`:
+Follow the conventions established in the existing codebase:
 
 | Category | Convention | Examples |
 |----------|-----------|----------|
@@ -402,8 +620,14 @@ Follow the conventions established in the existing `names.json`:
 | Internal subroutines | Descriptive `VerbNoun` | `BuildSineHdmaTable`, `ApplyOrbitalOffsetFromRef` |
 | JSL export helpers | `VerbNoun_Scope` | `SetEventFlag_0200`, `TestWramFlag_Offset100` |
 | Data tables | `lowercase_snake_case` | `bitmasks_bit_position`, `cop_dispatch_table` |
-| Actor scripts | Match actor/scene name | `hidden_red_jewel`, `StairTriggerSouth` |
+| Actor/scene blocks | `{prefix}_{descriptive_name}` | `sc01_seagull`, `gw85_retractable_gate`, `sF7_credits_player` |
+| Boss subroutines | `BossNameVerb` | `CastothAttackLoop`, `VampireMainAI` |
 | Engine subsystems | `VerbNoun` or `NounVerb` | `RunCombatCollision`, `UpdateFrameRender` |
+| Unused code | `unused_` prefix | `unused_debug_mode`, `unused_null_actor` |
+| Standalone functions | `VerbNoun` camelCase | `ActorDisplayModeSwap`, `EnemyInitBasic`, `RandomPlayerOffset` |
+| Binary data | `descriptive_snake_case` | `mummy_queen_angle_table`, `enemy_stats_def` |
+
+**Scene/area prefixes:** Many blocks carry a scene prefix like `sc01_`, `gw85_`, `sF7_`, `dm41_`. These encode the scene ID (hex) and area abbreviation. **Always preserve these prefixes** when renaming — they provide essential organizational context. Only the generic `actor_XXXXXX` / `func_XXXXXX` suffix should be replaced with a descriptive name.
 
 ## Summary
 
