@@ -1,6 +1,6 @@
 {
   "name": "@gaialabs/core",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "GaiaLabs TypeScript Core Library - Universal ROM processing engine",
   "funding": "https://github.com/sponsors/Azarem",
   "type": "module",
@@ -20,7 +20,6 @@
     "dev": "tsdown --watch",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "convert-midi": "node scripts/iog-to-midi.ts",
     "publish": "tsdown && npm publish --access public"
   },
   "devDependencies": {
