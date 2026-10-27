@@ -152,7 +152,7 @@ export class BlockReader {
       return;
     }
 
-    this._currentChunk!.mnemonics[label] = offset.toString(16).toUpperCase().padStart(offset <= 0xFF ? 2 : offset <= 0xFFFF ? 4 : 6, '0');
+    this._currentChunk!.mnemonics[label] = offset.toString(16).toUpperCase().padStart(offset <= 0xFFFF ? 4 : 6, '0');
   }
 
   /**

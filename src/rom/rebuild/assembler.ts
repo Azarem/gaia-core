@@ -39,8 +39,7 @@ export class Assembler {
   public eof: boolean = false;
   public strDelimRegex: RegExp;
   public conditionFiles: string[];
-  private inCondition: boolean = false;
-  private exitCondition: boolean = false;
+  private conditionStack: Array<{ exit: boolean; parentFailing: boolean }> = [];
   private failCondition: boolean = false;
 
   constructor(dbRoot: DbRoot, file: ChunkFile, conditionFiles: string[]) {
@@ -188,38 +187,58 @@ export class Assembler {
         }
         break;
 
-      case 'IF':
-        if(this.inCondition) throw new Error('IF without ENDIF');
+      case 'IF': {
         value = value.replace(/'/g, '');
         if(!value) throw new Error('IF without condition');
-        this.inCondition = true;
-        if(!this.conditionFiles.includes(value)) { this.failCondition = true; this.exitCondition = false; }
-        else { this.failCondition = false; this.exitCondition = true; }
+        const parentFailing = this.failCondition;
+        if(parentFailing) {
+          this.conditionStack.push({ exit: false, parentFailing: true });
+        } else if(this.conditionFiles.includes(value)) {
+          this.conditionStack.push({ exit: true, parentFailing: false });
+          this.failCondition = false;
+        } else {
+          this.conditionStack.push({ exit: false, parentFailing: false });
+          this.failCondition = true;
+        }
         break;
-        
-      case 'ELSEIF':
-        if(!this.inCondition) throw new Error('ELSEIF without IF');
+      }
+
+      case 'ELSEIF': {
+        if(this.conditionStack.length === 0) throw new Error('ELSEIF without IF');
         value = value.replace(/'/g, '');
         if(!value) throw new Error('ELSEIF without condition');
-        if(this.exitCondition || !this.conditionFiles.includes(value)) this.failCondition = true;
-        else { this.exitCondition = true; this.failCondition = false; }
+        const frame = this.conditionStack[this.conditionStack.length - 1];
+        if(frame.parentFailing || frame.exit) {
+          this.failCondition = true;
+        } else if(this.conditionFiles.includes(value)) {
+          frame.exit = true;
+          this.failCondition = false;
+        } else {
+          this.failCondition = true;
+        }
         break;
-        
-      case 'ELSE':
-        if(!this.inCondition) throw new Error('ELSE without IF');
+      }
+
+      case 'ELSE': {
+        if(this.conditionStack.length === 0) throw new Error('ELSE without IF');
         if(value) throw new Error('ELSE with condition');
-
-        if(this.exitCondition) this.failCondition = true;
-        else { this.failCondition = false; this.exitCondition = true; }
+        const frame = this.conditionStack[this.conditionStack.length - 1];
+        if(frame.parentFailing || frame.exit) {
+          this.failCondition = true;
+        } else {
+          frame.exit = true;
+          this.failCondition = false;
+        }
         break;
+      }
 
-      case 'ENDIF':
-        if(!this.inCondition) throw new Error('ENDIF without IF');
+      case 'ENDIF': {
+        if(this.conditionStack.length === 0) throw new Error('ENDIF without IF');
         if(value) throw new Error('ENDIF with condition');
-        this.failCondition = false;
-        this.exitCondition = false;
-        this.inCondition = false;
+        const popped = this.conditionStack.pop()!;
+        this.failCondition = popped.parentFailing;
         break;
+      }
     }
   }
 
@@ -319,6 +338,10 @@ export class Assembler {
         this.currentBlock!.objList.push(hex);
         this.currentBlock!.size += RomProcessingConstants.getSize(hex);
       } else {
+
+        let mnemonicStr = this.tags[hex] ?? this.root.mnemonicsLookup[hex];
+        if (mnemonicStr) hex = mnemonicStr;
+
         const data = this.hexStringToBytes(hex);
         if (data.length === 1) {
           this.currentBlock!.objList.push(new Byte(data[0]));

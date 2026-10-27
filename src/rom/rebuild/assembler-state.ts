@@ -290,6 +290,19 @@ export class AssemblerState {
         //   continue;
         // }
 
+        // Byte-replacement labels with an argument (`Label.at(1F)`). The parentheses are symbol
+        // characters, so the label has to be split off here, before the generic mnemonic/operand
+        // separation. Only top-level patch labels are eligible.
+        if (this.openTag === undefined && this.context.file.type.isPatch) {
+          const atLabel = RomProcessingConstants.AT_LABEL_REGEX.exec(this.context.lineBuffer);
+          if (atLabel) {
+            mnemonic = atLabel[0];
+            this.context.lineBuffer = this.context.lineBuffer.substring(atLabel[0].length).replace(/^[, \t]+/, '');
+            operand = this.context.lineBuffer;
+            break;
+          }
+        }
+
         // Separate instructions into mnemonic and operand parts
         const symbolIndex = this.context.lineBuffer.search(RomProcessingConstants.SYMBOL_SPACE_REGEX);
         if (symbolIndex > 0) {

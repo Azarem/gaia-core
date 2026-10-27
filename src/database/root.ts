@@ -341,6 +341,7 @@ export class DbRootUtils {
         chunkFile.rawData = chunkData;
         chunkFile.size = chunkData.length;
       }
+      
       if(!existing){
         const sourceFile = root.files.find(x => x.name === entry.name && x.type === type.name);
         if (sourceFile) {

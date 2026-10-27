@@ -369,7 +369,7 @@
     "operands": [],
     "size": 1,
     "formatString": null,
-    "parseRegex": null,
+    "parseRegex": "^[Aa]$",
     "instructions": {
       "ASL": 10,
       "DEC": 58,

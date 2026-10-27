@@ -28,7 +28,8 @@ export * from './static'
 // Utilities
 export * from './utils' 
 
-// All core modules have been converted and are exported above
+// Audio — BRR decode, SFX/BGM parsing, MIDI conversion, SoundFont generation
+export * from './audio'
 
 
 // Platform detection

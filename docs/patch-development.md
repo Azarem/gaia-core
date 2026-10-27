@@ -228,22 +228,41 @@ Before patch application, the engine builds a global lookup table mapping every 
 
 ### Label Suffixes (Override Characters)
 
-Labels in patch files use **override suffixes** (`!`, `-`, `+`) to declare rewrite operations. These suffixes are the boundary between topmost content and rewrite content — the first label with an override suffix marks where rewrite processing begins.
+Labels in patch files use **override suffixes** to declare rewrite operations. Every operation has a **symbol** form and an equivalent **verb** form — use whichever reads better; they are interchangeable. These suffixes are the boundary between topmost content and rewrite content — the first label with an override suffix marks where rewrite processing begins.
 
-| Suffix | Syntax | Behavior |
-|--------|--------|----------|
-| `!` (replace) | `Label! { ... }` | **Replace** the matched part in-place. **Error** if no match found. |
-| `-` (insert before) | `Label- { ... }` | **Insert before** the matched part (or merge into delimiter block). **Error** if no match found. |
-| `+` (insert after) | `Label+ { ... }` | **Insert after** the matched part (or merge into delimiter block). **Error** if no match found. |
-| *(none, after override)* | `Label { ... }` | **Chained insert** at the current cursor position in the target file. |
+| Operation | Symbol | Verb | Behavior |
+|-----------|--------|------|----------|
+| **Replace** block | `Label!` | `Label.replace` | **Replace** the matched label in-place. Works for any label — top-level block labels, internal colon labels, or nested labels. |
+| Insert **before** | `Label-` | `Label.before` | Splice the content in as a **separate part before** the matched part. Always a pure splice, regardless of delimiters. |
+| Insert **after** | `Label+` | `Label.after` | Splice the content in as a **separate part after** the matched part. Always a pure splice, regardless of delimiters. |
+| Merge into **head** | `Label-=` | `Label.prepend` | **Merge** the content into the **start** of the matched part. The target stays in place and the replacement part is consumed. Delimiters are preserved (see [Head/Tail Merge](#headtail-merge---and-)). |
+| Merge into **tail** | `Label+=` | `Label.append` | **Merge** the content onto the **end** of the matched part. The target stays in place and the replacement part is consumed. Delimiters are preserved. |
+| Replace **bytes** | `Label#[hex]` | `Label.at([hex])` | **Replace bytes** inside the matched part. The block's content overwrites `size(block)` bytes of the target starting at the hex byte offset (no offset = `0`). **Error** if the range runs past the end of the target part. |
+| *(none, after override)* | `Label` | — | **Chained insert** at the current cursor position in the target file. |
 
-**All override suffixes require a match.** There are no silent rewrites — if a label with `!`, `-`, or `+` does not match any existing part in the codebase, the build fails with an error.
+**How to read the symbols:** the sign is the *direction* (`-` toward the start, `+` toward the end). A bare sign adds a **new part beside** the block; adding `=` (like `+=` in most languages) merges **into** the block itself. `!` is "overwrite", and `#` is "number/offset".
+
+```asm
+Label! { ... }          ; same as  Label.replace { ... }
+Label- { ... }          ;          Label.before { ... }
+Label+ { ... }          ;          Label.after { ... }
+Label-= [ ... ]         ;          Label.prepend [ ... ]
+Label+= [ ... ]         ;          Label.append [ ... ]
+Label#1F { ... }        ;          Label.at(1F) { ... }
+Label# { ... }          ;          Label.at { ... }          (offset 0)
+```
+
+Verbs are case-insensitive and must be the text after the **last `.`** of the label (`Label.at(1F)` is the only verb that takes an argument, and it is hex). Both forms work with the colon one-liner style (`Label+=: entry < ... >`, `Label.append: entry < ... >`).
+
+**All override suffixes require a match.** There are no silent rewrites — if an override label does not match any existing part in the codebase, the build fails with an error.
+
+**Warning for `+` / `-` on delimited blocks:** splicing a part after a block that ends with a delimiter (e.g. a `]`-terminated struct list) puts your entries *after the list terminator*, which is almost never intended. The build prints a warning suggesting `+=` / `-=` when this happens.
 
 **Labels without suffixes** are never treated as rewrites. They are either:
 - **Topmost content** — if they appear before the first override label
 - **Chained inserts** — if they appear after an override label has established a target file
 
-**Duplicate label protection:** During label table construction, any non-override label that conflicts with an existing label name throws an error. Override labels (with `!`, `-`, `+`) are allowed to conflict because they are expected to target existing parts.
+**Duplicate label protection:** During label table construction, any non-override label that conflicts with an existing label name throws an error. Override labels (any symbol or verb form above) are allowed to conflict because they are expected to target existing parts.
 
 ### Matching Algorithm
 
@@ -251,7 +270,7 @@ The patch application algorithm (`RomProcessor.applyPatches`) processes each pat
 
 **Phase 1 — Separate topmost from rewrites:**
 
-The engine scans the patch's parts list from the beginning, looking for the first label that ends with an override character (`!`, `+`, or `-`). Everything before that boundary is **topmost content** and stays in the patch file. Everything from that point onwards is extracted into a **rewrite list** for processing.
+The engine scans the patch's parts list from the beginning, looking for the first label that carries an override suffix (symbol or verb form). Everything before that boundary is **topmost content** and stays in the patch file. Everything from that point onwards is extracted into a **rewrite list** for processing.
 
 ```
 Patch parts: [A] [B] [C!] [D] [E-] [F]
@@ -267,36 +286,55 @@ file = patch, dstIx = -1
 
 For each part in the rewrite list:
 
-  If label has override suffix (!, -, +):
+  If label has an override suffix (! - + -= += #  /  .replace .before .after .prepend .append .at):
     1. Strip suffix, lookup label in masterLookup (case-insensitive)
     2. If NO MATCH → THROW ERROR (all overrides require a match)
     3. Set file = matched part's file, dstIx = matched position
 
-    If suffix is !:
+    If replace (! / .replace):
       → REPLACE the matched part in-place
       → Update masterLookup to point to the new part
 
-    If suffix is + or -:
-      → If target part ends with a delimiter (array/struct closing bracket):
-        → MERGE content into the target part's object list
-           + appends before the closing delimiter
-           - prepends at the beginning of the object list
-      → Otherwise:
-        → SPLICE as a new part before (-) or after (+) the match
+    If bytes (#[hex] / .at([hex])):
+      → REPLACE BYTES inside the matched part (see "Byte Replacement" below)
+      → The matched part stays in place; the new part's objects are moved into it
+
+    If head (-= / .prepend) or tail (+= / .append):
+      → MERGE the new part's objects into the matched part's object list
+           head inserts at the beginning, tail inserts at the end
+      → Trailing delimiters are detached and a single one is re-attached at the end
+      → The new part is consumed (never placed in a file)
+      → dstIx: after the match for tail, at the match for head (chained inserts follow)
+
+    If before (- / .before) or after (+ / .after):
+      → SPLICE as a new part before / after the match
+        (no delimiter handling — the target is never modified;
+         a warning is printed if the target ends with a delimiter)
 
   Else (no override suffix):
     → INSERT at advancing dstIx cursor (chained insert)
 ```
 
-### Delimiter Merging (`+` and `-` with Arrays/Structs)
+### Head/Tail Merge (`-=` and `+=`)
 
-When using `+` or `-` on a part that ends with a **delimiter** (such as a `]` closing bracket for array/struct blocks), the engine performs an **in-place merge** instead of inserting a separate part. This allows extending data tables and struct lists without replacing the entire part.
+`Label-=` (`Label.prepend`) and `Label+=` (`Label.append`) merge new content into the **start** or **end** of an existing part, which is the way to extend data tables and struct lists (anything terminated by a **delimiter**, such as the closing `]` of an array/struct block) without replacing the whole part. The target part stays in place; the patch's replacement part is consumed and takes no further part in processing.
 
-**`+` (append):** The target's closing delimiter is temporarily removed, the new content's object list is appended, and the delimiter is restored (unless the new content already ends with one).
+> **`+` / `-` never merge.** They always splice the new content in as a separate part before/after the target, even when the target ends with a delimiter. Appending a `+` block to a delimited list therefore leaves the list's terminator *before* your new entries — use `+=` instead. The build warns when this happens.
 
-**`-` (prepend):** The new content's object list is inserted at the beginning of the target's object list. If the new content ends with a delimiter, it is removed to avoid a duplicate mid-list delimiter.
+**Delimiter handling.** A delimiter is the terminating Byte/Word that `]` emits for a struct list. A delimiter is only ever valid at the very end of a list, so for both operations:
 
-In both cases, the target part's size is updated to reflect the merged content.
+1. The trailing delimiter (if any) is detached from the target and from the replacement.
+2. The replacement's objects are inserted at the head (`-=`) or tail (`+=`) of the target.
+3. If either side had a delimiter, exactly one is re-attached at the end of the target:
+   - **`+=`**: the replacement's delimiter wins; otherwise the target's is restored.
+   - **`-=`**: the target's delimiter wins; otherwise the replacement's is attached (so a delimiter written in the replacement is preserved even when the target had none).
+4. If neither side has a delimiter the objects are simply concatenated.
+
+The target's size is updated by the bytes actually added or removed (delimiter sizes are measured, so Byte and Word delimiters are both handled).
+
+**Cursor.** Chained inserts that follow a `+=` override land after the target part; those following a `-=` override land before it.
+
+**Works on non-delimited blocks too.** With no delimiter on either side the objects are simply concatenated onto the head or tail of the target.
 
 **Example — appending entries to a thinker spawn list:**
 
@@ -307,7 +345,7 @@ thinker_spawn_0CEB2F [
 ]
 
 ; Patch appends new entries into the same list:
-thinker_spawn_0CEB2F+ [
+thinker_spawn_0CEB2F+= [
   thinker-spawn < #74, @ambient_palette_cycler >
   thinker-spawn < #00, @ending_comet_dma_setup >
   thinker-spawn < #24, @parallax_thinker >
@@ -322,10 +360,27 @@ thinker_spawn_0CEB2F [
 ]
 ```
 
+**Example — prepending an entry (`-=`) and adding a single entry in colon form (`+=:`), with the verb equivalents:**
+
+```asm
+thinker_spawn_0CEB30-= [
+  thinker-spawn < #11, @IrisCircleEffect >
+]
+
+thinker_spawn_0CEB30+=: thinker-spawn < #22, @IrisCircleEffect >
+
+; Identical, written with verbs:
+thinker_spawn_0CEB30.prepend [
+  thinker-spawn < #11, @IrisCircleEffect >
+]
+
+thinker_spawn_0CEB30.append: thinker-spawn < #22, @IrisCircleEffect >
+```
+
 **Example — inserting code before a matched part:**
 
 ```asm
-; Insert instructions before code_068114 (no delimiter → standard splice)
+; Insert instructions before code_068114 (pure splice as a separate part)
 code_068114- {
     LDA #$4000
     TSB $09EC
@@ -333,9 +388,41 @@ code_068114- {
 }
 ```
 
+### Byte Replacement (`#` / `.at`)
+
+`Label#[hex] { ... }` (verb form: `Label.at([hex]) { ... }`) overwrites a byte range *inside* an existing part without replacing the whole part. The range starts `hex` bytes after the start of `Label` (omit the hex for offset `0`) and is exactly as long as the replacement block's assembled size.
+
+```asm
+; Original:  TXY / LDX $0004, Y / LDA $7F0014, X ...
+;            offset 0: TXY (1 byte), offsets 1-3: LDX $0004, Y (3 bytes)
+
+; Replace the LDX (offset 1, 3 bytes) with NOPs — size unchanged:
+CopySiblingFollowState#1 {
+    NOP
+    NOP
+    NOP
+}
+
+; Replace the first byte (offset omitted = 0):
+CopySiblingFollowState# { NOP }
+
+; Verb form of the first example:
+CopySiblingFollowState.at(1) { NOP NOP NOP }
+```
+
+Rules:
+
+- **Offsets are hex**, relative to the start of the matched part (not the file).
+- **Crossing data is swallowed whole.** Part contents are stored as discrete objects (instructions, words, pointers, strings). Any object only partly covered by `[offset, offset + size)` is removed entirely and replaced by the new content, which is placed where the first removed object began. If the range is not aligned to object boundaries the target part's size changes by `newSize - removedBytes` (a 1-byte `#2` replacement over a 3-byte instruction at offset 1 shrinks the part by 2).
+- **The range must fit in the part.** `offset + size` beyond the part's end is a build error — `#` never spills into the next label. For parts with sub-labels, target the sub-label itself.
+- **The target part is edited in place**, so references to it stay valid and `masterLookup` is unchanged. Multiple `#` overrides on the same label apply in patch order; later offsets are measured against the already-modified part.
+- **Chained inserts** following a `#` override are placed after the target part, same as `!`.
+- The replacement block's content can contain label references (`$&label`, `$@label`) — they resolve at write time like any other code.
+- Unlike `!`, no sub-label orphaning occurs: untouched bytes (and any sub-labels) are left as they were. Prefer `#` over `!` for small in-place edits.
+
 ### Topmost Content (Standalone Blocks)
 
-Code that appears **before the first override label** (`!`, `-`, or `+` suffix) in the patch file remains in the patch file as **topmost content**. This content becomes a new standalone ROM chunk placed by the layout engine.
+Code that appears **before the first override label** (any override suffix, symbol or verb) in the patch file remains in the patch file as **topmost content**. This content becomes a new standalone ROM chunk placed by the layout engine.
 
 **Key rule:** New code that should exist as a single standalone unit (not patched into other blocks) **must** be declared at the top of the file, before any override labels. Once the engine encounters a label with an override suffix, all remaining parts are treated as rewrite/insert operations.
 
@@ -396,7 +483,7 @@ new_helper_b {
 }
 ```
 
-A subsequent override label (`!`, `-`, `+`) resets the target file and cursor to the new match location. Non-override labels continue inserting at whatever cursor position was last established.
+A subsequent override label (any symbol or verb form) resets the target file and cursor to the new match location. Non-override labels continue inserting at whatever cursor position was last established.
 
 ### Size and Rebase Rules
 
@@ -588,7 +675,102 @@ code_00EAF0! {
 }
 ```
 
-These `:` labels are local to the block and don't participate in global label matching.
+**Any label can be overridden with `!`.** This includes top-level `{ }` block labels, internal colon labels, and labels at any depth. There is no parent/child distinction for override matching — the `!` suffix performs a flat lookup against all labels in the codebase.
+
+### Flat Label Namespace — Braces Are Cosmetic
+
+**Critical concept:** The assembler uses a **flat label namespace**. Every label — whether declared with `{`, `:`, `[`, or `|` — creates a **separate `AsmBlock`** pushed onto a flat array. Braces `{ }` are purely cosmetic grouping; they do NOT create scoping or nesting.
+
+```asm
+; This extracted code creates THREE separate AsmBlocks:
+UseItemTab {                      ; ← AsmBlock 1: "UseItemTab"
+    LDA #$0004
+    STA $bg1ConfigMode
+    ; ...setup code...
+    BPL code_02E47F
+    STZ $1A
+
+  code_02E47F:                    ; ← AsmBlock 2: "code_02E47F"
+    JSR $&PositionEquipCursor
+    COP [SetEntryHereAndYield]
+    COP [BranchIfPressed] ( #$0080, &UseItemConfirm )
+    RTL
+}                                 ; ← cosmetic close, no effect on blocks
+```
+
+### Override Replaces Exactly One Block
+
+`Label!` replaces **exactly one `AsmBlock`** — the one matching that label name. Internal colon labels (sub-labels) are separate blocks that **persist unchanged** after the override:
+
+```
+Original parts list:  [UseItemTab] [code_02E47F] [UseItemCursorUp] ...
+
+Override: UseItemTab! { ...new code... }
+
+Result parts list:    [UseItemTab*] [code_02E47F] [UseItemCursorUp] ...
+                       ↑ replaced    ↑ UNCHANGED   ↑ UNCHANGED
+```
+
+**Sub-label orphaning hazard:** If you override a parent block but forget to override its sub-labels, the sub-labels remain with their original code. This can cause:
+- Duplicate code (original sub-label code persists alongside override)
+- Stale mask values (sub-label still has pre-transform constants)
+- Unreachable code waste (nobody branches to the orphaned sub-label)
+
+**Example — correct override with sub-labels:**
+```asm
+; Override the parent block
+PsychoSliderChargeTick! {
+    LDA $joypadCurrent
+    BIT #$0008
+    BEQ loc_02C212        ; ← branch to overridden sub-label
+    LDA $26
+    SEC
+    SBC #$0001
+    STA $26
+}
+
+; MUST also override sub-labels or they persist with original code
+loc_02C202! {
+    NOP                   ; filler — falls through to loc_02C212
+}
+
+loc_02C212! {
+    LDA $joypadCurrent
+    AND #$0008
+    TSB $joypadHeld
+    RTS
+}
+```
+
+### When to Use Transforms Instead of Overrides
+
+When the only change to a block is a **constant value** (e.g., a button mask in a COP call), prefer **`transforms.json`** over label overrides. Transforms apply regex replacements to the extracted `.asm` text during extraction, avoiding all sub-label issues. See [Transforms vs Overrides](#transforms-vs-overrides) below.
+
+### Override Example — Internal Label
+
+To override just an internal colon label within a larger block:
+
+```asm
+; Original extracted code:
+DiaryStartJourney {
+    JSR $&DiaryMenuClearVram
+    ; ...setup code...
+
+  DiaryStartSlotLoop:
+    COP [SetEntryHereAndYield]
+    COP [BranchIfPressed] ( #$8000, &DiaryStartCancel )
+    RTL
+}
+
+; Patch — overrides only the DiaryStartSlotLoop block:
+DiaryStartSlotLoop! {
+    COP [SetEntryHereAndYield]
+    COP [BranchIfPressed] ( #$0020, &DiaryStartCancel )
+    RTL
+}
+```
+
+Since `DiaryStartSlotLoop` has no sub-labels of its own, this is a clean replacement.
 
 ### Cross-Bank References
 
@@ -659,10 +841,9 @@ A large utility patch demonstrating multiple features:
 
 ---------------------------------------------------------
 
-; Topmost content: new global hook
-global_scripts {
-    JSL @RunButton
-    JSL @ItemSwapping
+; Topmost content: new routine
+my_helper {
+    JSL @SomeRoutine
     RTS
 }
 
@@ -673,8 +854,9 @@ global_scripts {
 
 - Multiple `?INCLUDE` declarations for documentation
 - Hardware register tags (`!VMADDL`, `!A1T0L`) declared locally
-- `global_scripts` is topmost content that becomes a new ROM chunk in bank 03
+- `my_helper` is topmost content that becomes a new ROM chunk in bank 03
 - Rewrite labels below reference the new topmost code via `$@`
+- For per-frame hooks that several patches share, prefer a self-registering chain (a head/tail pair in a plain `.asm` file that each patch extends with `Head+ { JSL $@stub }`) over a hard-wired call list — see `gaia-iog-baserom/baserom/player-input/player_input_core.asm`
 
 ---
 
@@ -739,7 +921,7 @@ The rebuild will:
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `Duplicate label in file: X` | A non-override label conflicts with an existing label | Rename the label, or add a `!` suffix if you intend to replace it |
-| `Patch X contains a rewrite that does not exist: Y` | Override suffix (`!`, `+`, `-`) but label not found | Check spelling, verify the target part exists in extracted code |
+| `Patch X contains a rewrite that does not exist: Y` | Override suffix (`!`, `+`, `-`, `+=`, `-=`, `#`, or a `.verb` form) but label not found | Check spelling, verify the target part exists in extracted code |
 | Bank overflow / wrong address | `$&` reference to a different bank | Change to `$@` for cross-bank, or use `?BANK` to colocate |
 | Patch not appearing in output | All parts were rewrite/insert, no topmost content | Expected behavior — patch content lives inside target blocks |
 | Code assembled at wrong location | Missing `?BANK` for bank-sensitive code | Add `?BANK XX` directive |
@@ -766,12 +948,15 @@ The rebuild will:
 │ existing_label! {      ← replace in-place    │
 │   ...                                        │
 │ }                                            │
-│ existing_label- {      ← insert/merge before │
+│ existing_label- {      ← splice part before  │
 │   ...                                        │
 │ }                                            │
-│ existing_label+ {      ← insert/merge after  │
+│ existing_label+ {      ← splice part after   │
 │   ...                                        │
 │ }                                            │
+│ existing_label+= [     ← merge onto tail     │
+│   ...                                        │
+│ ]                                            │
 │ new_label {            ← chained insert      │
 │   ...                  (after prior match)   │
 │ }                                            │
@@ -791,15 +976,18 @@ The rebuild will:
 
 ### Label Suffix Reference
 
-| Suffix | Match Required | On Match | On No Match |
-|--------|---------------|----------|-------------|
-| `!` | **Yes** | Replace target part | **Error** thrown |
-| `-` | **Yes** | Insert/merge **before** target | **Error** thrown |
-| `+` | **Yes** | Insert/merge **after** target | **Error** thrown |
+| Symbol | Verb | Match Required | On Match | On No Match |
+|--------|------|---------------|----------|-------------|
+| `!` | `.replace` | **Yes** | Replace target part | **Error** thrown |
+| `-` | `.before` | **Yes** | Splice new part **before** target | **Error** thrown |
+| `+` | `.after` | **Yes** | Splice new part **after** target | **Error** thrown |
+| `-=` | `.prepend` | **Yes** | Merge content into the **head** of target (delimiter-aware) | **Error** thrown |
+| `+=` | `.append` | **Yes** | Merge content onto the **tail** of target (delimiter-aware) | **Error** thrown |
+| `#[hex]` | `.at([hex])` | **Yes** | Replace bytes in target at hex offset | **Error** thrown |
 | *(none, in topmost)* | — | N/A (topmost content) | Stays in patch file as new chunk |
 | *(none, after override)* | — | N/A (chained insert) | Inserted at cursor position in target file |
 
-**Note:** `+` and `-` perform delimiter merging (in-place content append/prepend) when the target part ends with a delimiter such as `]`. Otherwise they perform a standard splice insert.
+**Note:** `+` and `-` are pure splices and never touch a delimiter. To extend a delimited list (`]`-terminated struct list) use `+=` / `-=` (`.append` / `.prepend`).
 
 ### Tag Reference
 
@@ -822,6 +1010,84 @@ The rebuild will:
 
 ---
 
+## Transforms vs Overrides
+
+### When to Use Each
+
+| Approach | Use When | Example |
+|----------|----------|---------|
+| **`transforms.json`** | Changing a constant value (mask, offset, string) without restructuring code | Button mask `#$8001` → `#$8000` in a COP call |
+| **Label override (`!`)** | Restructuring code logic, adding/removing instructions, changing control flow | Simplifying L/R alternation to a single check |
+| **Both** | Base constants via transforms + structural changes via overrides | Transforms handle all mask swaps; overrides handle simplified charge tick |
+
+### transforms.json Format
+
+Transforms are per-block regex replacements applied to extracted `.asm` text during extraction. They live in `db-us/transforms.json` (or `db-jp/transforms.json` for JP builds).
+
+```json
+{
+  "block_name": [
+    { "key": "regex_pattern", "value": "replacement_string" },
+    { "key": "another_pattern", "value": "another_replacement" }
+  ]
+}
+```
+
+The block name must match a block in `blocks.json`. Each entry's `key` is a JavaScript regex (applied with the `g` flag), and `value` is the replacement string.
+
+**Regex escaping rules:**
+- JSON escaping applies: `\\` in JSON = `\` in the regex
+- `\\$` matches literal `$` (common in asm: `#$8000`, `$&label`)
+- `\\s+` matches whitespace including newlines (for multiline patterns)
+- `[^\\r\\n]*` matches any characters on the same line (skips inline comments)
+
+**Replacement string rules** (JavaScript `String.replace` semantics):
+- `$$` produces a literal `$` in the output
+- `$1`, `$2` insert captured groups
+- `$&` inserts the full matched text
+
+**Example — COP button mask change:**
+```json
+{
+  "player_character": [
+    { "key": "#\\$0030, &(RunSouth|RunNorth|RunWest|RunEast)", "value": "#$$0010, &$1" }
+  ]
+}
+```
+
+This changes `#$0030, &RunSouth` → `#$0010, &RunSouth` (and similarly for North/West/East). The `$1` capture group preserves the specific target label.
+
+**Example — removing code lines:**
+```json
+{
+  "sFA_diary_menu": [
+    { "key": "\\s+LDA #\\$8000\\s+STA \\$remapB\\s+LDA #\\$4000\\s+STA \\$remapY", "value": "" }
+  ]
+}
+```
+
+This removes the 4-line remap variable write block from the extracted text.
+
+### Why Transforms Avoid Sub-Label Issues
+
+With label overrides, changing a constant in one block means overriding that entire block — and then also overriding every sub-label to prevent orphaning. For a block with 3 sub-labels, that's 4 override labels just to change one `#$8000` to `#$0080`.
+
+With transforms, the regex operates on the extracted text **before** assembly. Sub-labels are just text — the regex replaces the constant in-place and the block structure is untouched.
+
+**Rule of thumb:** If you're writing more than 3 label overrides that each only change a mask constant, convert them to transforms instead.
+
+### Transform Application Order
+
+1. Engine extracts ROM to `.asm` text
+2. Transforms from `transforms.json` are applied to the text (regex replace)
+3. Modified text is written to disk as the extracted `.asm` file
+4. During rebuild, the assembler reads the (already-transformed) `.asm` files
+5. Patch overrides replace specific labels in the assembled output
+
+Transforms and overrides are complementary: transforms handle the base extracted code, overrides handle targeted structural changes. If a label is both transformed AND overridden, the override wins (it replaces the block entirely — the transformed text is never used for that label).
+
+---
+
 ## Engine Source Reference
 
 Key source files in `@gaialabs/core` that implement patch processing:
@@ -837,3 +1103,491 @@ Key source files in `@gaialabs/core` that implement patch processing:
 | `src/rom/generator.ts` | `applyPatchFile` — loads patches into the build file list |
 | `src/database/root.ts` | `DbRootUtils.applyFolder` — discovers `.patch.asm` on disk |
 | `src/rom/extraction/writer.ts` | `BlockWriter.generateAsm` — emits `?BANK`, `?INCLUDE`, `!tags` during extraction |
+
+---
+
+## Common Pitfalls and Lessons Learned
+
+Mistakes that have caused real debugging sessions during patch development. Read these before writing patches.
+
+### BRA Range Exceeded After Chained Inserts
+
+**Problem:** After an `!` override, subsequent non-override labels are **chained inserts** — spliced immediately after the overridden block. This pushes the blocks that were originally adjacent further away, potentially breaking `BRA` instructions that relied on the original proximity.
+
+**Root cause:** `BRA` (branch always) has a ±128 byte range. Chained inserts increase the distance between the override point and the blocks below it. A `BRA` targeting a label 50 bytes away becomes 300 bytes away after inserting 250 bytes of new code between them.
+
+**Example:**
+```asm
+; Original layout: code_02E47F is ~40 bytes from UseItemCursorUp
+; UseItemCursorUp's BRA code_02E47F works fine
+
+; Patch inserts 3 new blocks after code_02E47F! override:
+code_02E47F! { ... }
+UseItemReorderStart { ...80 bytes... }
+UseItemReorderConfirm { ...80 bytes... }
+UseItemReorderCancel { ...80 bytes... }
+
+; UseItemCursorUp is now ~280 bytes from code_02E47F → BRA out of range!
+```
+
+**Fix:** Override the affected labels to use `JMP $&target` instead of `BRA target`:
+
+```asm
+UseItemCursorUp! { JMP $&code_02E47F }
+UseItemCursorDown! { JMP $&code_02E47F }
+```
+
+**Prevention:** After adding chained inserts, check the next 5-10 labels below the insertion point for `BRA` instructions that branch upward.
+
+### Sub-Label Orphaning with `!` Overrides
+
+**Problem:** Overriding a block label with `!` replaces only that ONE `AsmBlock`. Internal colon labels (sub-labels) are separate blocks that persist with their original code, leading to orphaned code, duplicate labels, or stale constants.
+
+**Root cause:** The assembler creates a new `AsmBlock` for every label it encounters — `{`, `:`, `[`, `|` — in a flat array. Braces `{ }` are cosmetic grouping with no effect on block boundaries. When `Label!` fires, it does `file.parts[dstIx] = newPart` — replacing exactly one entry.
+
+**Example — orphaned sub-label:**
+```asm
+; Original extracted code (creates 3 AsmBlocks):
+PsychoSliderChargeTick {       ; Block 1
+    LDA $26
+    LSR
+    BCC loc_02C202
+    ; ...odd frame check...
+
+  loc_02C202:                  ; Block 2 — separate AsmBlock!
+    ; ...even frame check...
+
+  loc_02C212:                  ; Block 3 — separate AsmBlock!
+    AND #$0030
+    TSB $joypadHeld
+    RTS
+}
+
+; WRONG — only overrides Block 1, Blocks 2 and 3 persist with original code!
+PsychoSliderChargeTick! {
+    LDA $joypadCurrent
+    BIT #$0008
+    BEQ psct_done
+    ; ...new code...
+  psct_done:
+    RTS
+}
+; loc_02C202 and loc_02C212 still exist with their old code → waste/confusion
+
+; CORRECT — override ALL sub-labels too
+PsychoSliderChargeTick! { ...new code... }
+loc_02C202! { NOP }            ; override sub-label (filler or reuse)
+loc_02C212! { ...consumption code... RTS }
+```
+
+**Diagnosis:** After `npm run rebuild`, if the ROM contains unexpected duplicate code or old constant values survive after an override, check for orphaned sub-labels. Use line-tracked extraction (`npm run extract:lt`) to verify which addresses map to which labels.
+
+**Prevention:**
+1. Before overriding a label, check the extracted `.asm` for internal colon labels within its braces
+2. Override every sub-label with `!` (even if just `NOP` or `RTS`)
+3. **Better:** Use `transforms.json` for simple constant changes instead of overrides — transforms operate on text and don't have sub-label issues
+
+### Tag Constants Must Match Operand Width
+
+**Problem:** Defining a tag constant with fewer hex digits than the instruction's operand width causes the assembler to emit a smaller immediate operand than the CPU expects, silently misaligning the instruction stream.
+
+**Example:**
+```asm
+; WRONG — 1-byte constant used with 16-bit accumulator (M=0)
+!list_len    FD
+
+REP #$20              ; M=0 → 16-bit A
+LDA #$list_len        ; Assembles as: A9 FD (2 bytes, 1-byte immediate)
+                      ; CPU reads:     A9 FD xx (3 bytes, 2-byte immediate)
+                      ; → next instruction is misread, stack corrupts, crash
+```
+
+```asm
+; CORRECT — 2-byte constant matches 16-bit accumulator width
+!list_len    00FD
+
+REP #$20
+LDA #$list_len        ; Assembles as: A9 FD 00 (3 bytes, correct)
+```
+
+**Rule:** Always declare tag constants with the **same byte width** as the operand context where they will be used:
+- 2 hex digits (1 byte) for `SEP`/`REP` arguments and 8-bit mode operations
+- 4 hex digits (2 bytes) for 16-bit immediate operands (`LDA #$`, `CMP #$`, `ADC #$`, etc.)
+- 6 hex digits (3 bytes) for 24-bit long addresses
+
+### Persistent Engine DP State Must Be Preserved
+
+**Problem:** The engine stores critical persistent state in the low direct page (`$00`–`$94`) that must survive across the entire main loop. Overlay code (minimap, menu, custom HUD) that uses DP addresses as scratch can silently corrupt engine state, causing post-close freezes, broken collision, or actor malfunction.
+
+**Known persistent DP addresses:**
+
+| Address | Size | Engine Role | Consequence of Corruption |
+|---------|------|-------------|--------------------------|
+| `$30` | 1 | SPC transfer handshake counter | Audio transfer errors |
+| `$34` | 2 | SPC transfer block size | Audio transfer errors |
+| `$36` | 2 | Frame parity counter (NMI `INC $36`) | SPC I/O timing, HDMA buffer select |
+| `$56` | 2 | Actor list head pointer | Actor execution skipped/corrupted |
+| `$66` | 1 | HDMA channel enable mask | HDMA effects disappear |
+| `$80`–`$82` | 3 | **Collision tile map long pointer** | **All collision reads from wrong address — actors freeze, walk through walls** |
+| `$84`–`$8F` | 12 | VRAM cache ring metadata | Scene transition tile corruption |
+| `$94` | 2 | VRAM cache ring index | Cache slot misalignment |
+
+**Symptom:** Game appears to run after overlay closes, but actors are frozen, palette animations stop, and buttons are unresponsive. The main loop executes but collision checks read garbage data because `[$80]` no longer points to `$7FC000`.
+
+**Fix pattern — MVN save/restore bracket:**
+```asm
+    ; Save engine low DP before overlay rendering
+    PHB
+    REP #$20
+    LDX #$0000
+    LDY #$save_area     ; WRAM save destination (e.g., $7F3C5C)
+    LDA #$0094           ; count-1: save $00-$94 (149 bytes)
+    MVN #$7F, #$00       ; dest bank $7F, source bank $00
+    PLB
+
+    JSR $&overlay_rendering_code
+
+    ; Restore engine low DP after rendering
+    PHB
+    REP #$20
+    LDX #$save_area
+    LDY #$0000
+    LDA #$0094
+    MVN #$00, #$7F       ; dest bank $00, source bank $7F
+    PLB
+```
+
+**Rule:** Any code that writes to DP addresses in the `$00`–`$94` range as scratch registers must wrap those writes in a save/restore bracket. The original radar (`RadarScreenSetup`) avoids this issue by using only DPs `$02`, `$18`–`$1E`, which don't overlap critical persistent state. Zeroing the affected DPs is **not** sufficient — the engine requires the *original* values (especially the collision pointer at `$80`–`$82`).
+
+### DmaWordToVram Requires 8-bit Accumulator
+
+**Problem:** `DmaWordToVram` (at address 164770) has an M=1 override — it operates in 8-bit accumulator mode. The function stores A (bank byte) and several configuration values to single-byte DMA hardware registers. Calling it with M=0 (16-bit A) causes 2-byte writes that overflow into adjacent registers, corrupting the DMA source address.
+
+**Calling convention:**
+```asm
+SEP #$20              ; REQUIRED: 8-bit A for DmaWordToVram
+LDX #$vram_addr       ; VRAM word address → VMADDL (pre-set by caller)
+STX $VMADDL
+LDX #$&source_label   ; Source: 16-bit address within bank
+LDA #$^source_label   ; Source: bank byte (8-bit)
+LDY #$byte_count      ; Transfer size in bytes (16-bit Y)
+JSL $@DmaWordToVram
+REP #$20              ; Restore 16-bit A if needed
+```
+
+**Rule:** Always `SEP #$20` before calling `DmaWordToVram`. Always set `VMADDL` to the target VRAM word address before the call.
+
+### Console Font Tiles and Box Rendering
+
+The ConsoleStringRenderer system (`ConsoleStringRenderer.asm`) maps bytes ≥ $12 directly to VRAM tile indices. The standard `gfx_fonts` has character tiles drawn for transparent backgrounds. When rendering text inside `[RCT]` (DrawBox) rectangles, the character tile backgrounds may not match the box interior fill.
+
+**Solution:** Upload box-optimized font tiles to VRAM before rendering. Use `DmaWordToVram` during forced blank (`LDA #$80 / STA $INIDISP`) to overwrite the relevant tile range:
+```asm
+SEP #$20
+LDA #$80                       ; Force blank
+STA $INIDISP
+LDX #$0090                     ; Tile $12 × 8 words/tile = VRAM $0090
+STX $VMADDL
+LDX #$&custom_font+120         ; Byte offset $120 = tile $12 × 16 bytes
+LDA #$^custom_font
+LDY #$06E0                     ; Tiles $12–$7F = 110 tiles × 16 bytes
+JSL $@DmaWordToVram
+LDA #$0F                       ; Restore full brightness (or desired level)
+STA $INIDISP
+REP #$20
+```
+
+### Calling ConsoleStringRenderer Directly (Bypassing COP)
+
+The `RunBg3Script` COP handler sets up the rendering context before calling `ConsoleStringRenderer`:
+- **DBR** = string data bank
+- **DP** = $0000 (ConsoleStringRenderer uses zero-page scratch)
+- **X** = $0000 (VRAM buffer start offset)
+
+When calling `ConsoleStringRenderer` directly via `JSL`, you must replicate this context:
+```asm
+dm_call_csr:
+    PHD                              ; Save caller's DP
+    PHB                              ; Save caller's DBR
+    SEP #$20
+    LDA #$^string_data_label         ; Bank byte of string data
+    PHA
+    PLB                              ; DBR = string bank
+    REP #$20
+    LDA #$0000
+    TCD                              ; DP = $0000
+    LDX #$0000                       ; VRAM buffer start offset
+    JSL $@ConsoleStringRenderer
+    PLB                              ; Restore DBR
+    PLD                              ; Restore DP
+    RTS
+```
+
+**Rule:** Save/restore DP and DBR. Set DP to $0000 and DBR to the bank containing your string data before the JSL.
+
+### Button Mapping in IOG — Action Flag System
+
+IOG uses an **action flag remap system** that converts physical SNES button presses into logical action flags. The remap variables (`$0DA6`–`$0DB4`) are initialized by `SystemInitConstants` at power-on and optionally customized by the options menu module.
+
+**Action flag layout in `joypadCurrent` ($0656):**
+
+| Bit | Mask | Action | Default Physical Button |
+|-----|------|--------|------------------------|
+| 15 | `$8000` | ACTION_CONFIRM | A |
+| 14 | `$4000` | ACTION_CANCEL | B |
+| 13 | `$2000` | Select (fixed) | Select |
+| 12 | `$1000` | Start (fixed) | Start |
+| 11–8 | `$0F00` | D-pad (fixed) | D-pad |
+| 7 | `$0080` | ACTION_ATTACK | A |
+| 6 | `$0040` | ACTION_RUN | Y |
+| 5 | `$0020` | ACTION_BLOCK1 | L |
+| 4 | `$0010` | ACTION_BLOCK2 | R |
+| 3 | `$0008` | ACTION_USE_ITEM | B |
+| 2 | `$0004` | ACTION_CYCLE_ITEM | X |
+| 1–0 | `$0002/$0001` | Reserved | — |
+
+**Rule:** Always test action flags against `joypadCurrent`/`joypadHeld`, never raw hardware buttons. Game code checks for action flags like `#$0080` (confirm), `#$0020` (cancel), `#$8000` (attack), etc.
+
+The remap pipeline is defined in `baserom/patches/InputRemap.patch.asm`. The button mask constants in extracted code are set by `transforms.json` during extraction (see [Transforms vs Overrides](#transforms-vs-overrides) below).
+
+**Remap variable → physical button mapping** (variable names are historical — do not match physical buttons):
+
+| Variable | Address | Physical Button |
+|----------|---------|----------------|
+| `remapR` | `$0DA6` | R |
+| `remapL` | `$0DA8` | L |
+| `remapB` | `$0DAA` | B |
+| `remapA` | `$0DAC` | A |
+| `remapY` | `$0DAE` | Y |
+| `remapX` | `$0DB0` | X |
+| `remapStart` | `$0DB2` | Start (passthrough) |
+| `remapSelect` | `$0DB4` | Select (passthrough) |
+
+### Input Consumption Pattern
+
+After handling a button press, consume it to prevent auto-repeat on the next frame:
+```asm
+LDA #$button_flag     ; e.g. #$0800 for Up
+TSB $joypadHeld       ; Mark as consumed — won't trigger again until released and re-pressed
+```
+
+When closing a menu, consume ALL currently-held buttons to prevent bleed-through:
+```asm
+LDA $joypadCurrent
+TSB $joypadHeld       ; Consume everything held right now
+```
+
+### Adhoc DMA Size-Before-Trigger Race Condition
+
+**Problem:** IOG's adhoc DMA system uses `$7F0C07` as both the VRAM destination address and a trigger flag. The NMI handler checks this address every frame — if non-zero, it fires a DMA transfer using the values in `$7F0C03-05` (source) and `$7F0C09` (size), then clears `$7F0C07` to zero.
+
+Writing the trigger (`$7F0C07`) before the size (`$7F0C09`) creates a race condition: if NMI fires between the two writes, it uses the **stale size** from the previous DMA transfer.
+
+**Example:**
+```asm
+; WRONG — NMI can fire after trigger write, before size write
+; Previous DMA was 1280 bytes ($0500). This DMA should be 64 bytes.
+LDA #$4EE0
+STA $7F0C07           ; ← NMI fires HERE → fires DMA with stale size $0500!
+LDA #$0040
+STA $7F0C09           ; Too late — DMA already ran with wrong size
+
+; CORRECT — always write size BEFORE trigger
+LDA #$0040
+STA $7F0C09           ; Size set first
+LDA #$4EE0
+STA $7F0C07           ; Trigger armed — NMI will use correct size
+```
+
+**Rule:** Always write `$7F0C09` (byte count) before `$7F0C07` (VRAM dest / trigger). Source address writes (`$7F0C03-05`) can be in any order relative to each other, but must be set before the trigger.
+
+**Adhoc DMA register map:**
+
+| Register | Address | Role |
+|----------|---------|------|
+| Source low word | `$7F0C03-04` | DMA source address (low 16 bits) |
+| Source bank | `$7F0C05` | DMA source bank byte |
+| Trigger/dest | `$7F0C07` | VRAM destination AND trigger (0 = idle, non-zero = armed) |
+| Byte count | `$7F0C09` | Transfer size in bytes |
+
+### Label Offset Arithmetic Is Hexadecimal
+
+**Problem:** When using `+offset` in label references like `#$&label+64`, the offset is parsed as **hexadecimal**. Writing `+64` means hex $64 = 100 decimal, not 64 decimal.
+
+**Example:**
+```asm
+; WRONG — binary data is 128 bytes; +64 = $64 = 100, reads 28 bytes of garbage
+LDA #$&my_tiles+64    ; Actually label + 100 decimal!
+
+; CORRECT — hex $40 = 64 decimal
+LDA #$&my_tiles+40    ; label + 64 decimal ✓
+```
+
+**Evidence:** Existing codebase uses offsets like `+15C` (contains hex digit C), proving hex interpretation.
+
+**Rule:** Always convert decimal offsets to hex. Common conversions: 32 = `+20`, 48 = `+30`, 64 = `+40`, 96 = `+60`, 128 = `+80`, 256 = `+100`.
+
+### 65C816 Long Addressing Mode Limitations
+
+**Problem:** The 65C816 only supports `X`-indexed long addressing. There is no `LDA $long, Y` or `STA $long, Y` instruction.
+
+| Opcode | Instruction | Exists? |
+|--------|------------|---------|
+| `$BF` | `LDA $long, X` | ✅ Yes |
+| — | `LDA $long, Y` | ❌ No |
+| `$9F` | `STA $long, X` | ✅ Yes |
+| — | `STA $long, Y` | ❌ No |
+
+When you need Y-indexed access to a long address, restructure to use X for the table/array access and store the other index in a DP scratch register.
+
+### Accumulator-Implied Opcodes: No `A` Operand
+
+**Problem:** Writing `LSR A`, `ASL A`, `INC A`, `DEC A`, `ROL A`, or `ROR A` produces assembly errors. The GaiaLabs assembler uses the bare mnemonic for accumulator-implied addressing.
+
+```asm
+; WRONG — assembler does not accept 'A' as an operand
+LSR A
+INC A
+
+; CORRECT — bare mnemonic targets the accumulator
+LSR
+INC
+```
+
+**Rule:** For shift, rotate, and increment/decrement on the accumulator, always use the bare mnemonic without any operand. Memory-addressed forms (`LSR $addr`, `INC $addr`) do take an operand as normal.
+
+### VRAM Update Synchronization — Adhoc DMA vs DmaWordToVram
+
+**Problem:** When tearing down an overlay that modified both VRAM tile CHR data and BG3 tilemap data, using `DmaWordToVram` (direct DMA during force blank) to restore tile CHR causes 1-frame ghosting. The CHR is restored immediately, but the BG3 tilemap (staging buffer) isn't flushed to VRAM until the next NMI. For one frame, the display shows the old overlay tilemap pointing at the newly-restored tile graphics — garbled appearance.
+
+**Example — minimap teardown ghosting:**
+```asm
+; WRONG — direct DMA desyncs CHR from tilemap
+SEP #$20
+LDA #$80
+STA $INIDISP              ; force blank
+LDX #$6800                ; VRAM dest for font tiles
+STX $VMADDL
+LDX #$&gfx_fonts+1002     ; source
+LDA #$^gfx_fonts           ; bank
+LDY #$0500                ; size
+JSL $@DmaWordToVram        ; CHR updated NOW — tilemap still has overlay layout
+; → next frame: old tilemap + new CHR = garbage ghost
+```
+
+```asm
+; CORRECT — queue adhoc DMA, both updates fire in same NMI VBlank
+REP #$20
+LDA #$&gfx_fonts+1002
+STA $adhocVramDma          ; source low word ($7F0C03)
+LDA #$*gfx_fonts
+STA $7F0C05                ; source bank
+LDA #$0500
+STA $7F0C09                ; size FIRST (before trigger!)
+LDA #$6800
+STA $7F0C07                ; trigger — NMI fires DMA + tilemap flush atomically
+```
+
+**Why it works:** The NMI handler executes `DmaAdhocVramBlock` (tile CHR) then `FlushVramWriteQueue` (staging buffer tilemap) in the same VBlank. Both VRAM regions update before the next visible frame — no desync.
+
+**Rule:** When an overlay teardown must restore VRAM tile CHR data while the staging buffer is also being flushed, use the adhoc DMA pipeline (`$7F0C03-$7F0C09`) instead of `DmaWordToVram`. This synchronizes both updates in the same NMI handler.
+
+### gfx_fonts ROM Format
+
+The dialog font (`gfx_fonts`) uses a 2-byte null-compression header followed by raw 2bpp tile data:
+
+| Offset | Size | Content |
+|--------|------|---------|
+| +0 | 2 | Compression header (skip for raw access) |
+| +2 | 8192 ($2000) | Raw 2bpp tile data (512 tiles × 16 bytes) |
+
+The font fills VRAM $6000–$6FFF (BG3 character base from BG34NBA = $06). Any overlay that uploads tile CHR into this range (e.g., $6800 for tile index $100+) must restore the font during teardown. Source offset calculation: `gfx_fonts + 2 + (VRAM_dest − $6000) × 2`.
+
+### No Combined Label+Constant Addressing
+
+**Problem:** The GaiaLabs assembler cannot parse `$label+constant, X` as a combined operand. The `+constant` suffix triggers decimal arithmetic on the label, but the trailing `, X` addressing mode suffix causes the parser to produce NaN.
+
+```asm
+; WRONG — produces build error "Invalid operand '000NAN, X'"
+STA $stagingBuffer+2, X
+
+; CORRECT — fold the constant into X before the access
+TXA
+CLC
+ADC #$0002
+TAX
+STA $stagingBuffer, X
+```
+
+### COP Commands Require X = Actor Slot ID
+
+**Problem:** The COP dispatch system expects the X register to contain the current actor's slot ID when any COP instruction executes. If X has been clobbered by earlier code (loop counters, scratch calculations, etc.), the COP handler operates on the wrong actor context — spawning actors with wrong parent links, writing fields to wrong actor slots, or corrupting the actor linked list.
+
+**Root cause:** The COP interrupt handler uses X (along with D and Y) to identify the calling actor and set up the handler context. The specific handlers then read operands, modify actor fields, and update linked list pointers based on this context. A clobbered X causes cascading corruption.
+
+**Example — OAM buffer clear loop clobbers X:**
+```asm
+; WRONG — X is $FFFE after the loop, not the actor ID
+LDA #$0000
+LDX #$007E
+-ClearLoop:
+    STA $7F0600, X
+    DEX
+    DEX
+    BPL -ClearLoop
+; X = $FFFE here!
+COP [SpawnAfterFlags] ( @some_actor, #$2000 )  ; ← COP sees garbage X → crash
+
+; CORRECT — save/restore X around any code that clobbers it
+PHX                      ; save actor slot ID
+LDA #$0000
+LDX #$007E
+-ClearLoop:
+    STA $7F0600, X
+    DEX
+    DEX
+    BPL -ClearLoop
+PLX                      ; restore actor slot ID
+COP [SpawnAfterFlags] ( @some_actor, #$2000 )  ; ← COP sees correct X ✓
+```
+
+**Rule:** Before any COP instruction in actor code, ensure X = the current actor's slot ID. If you use X as a loop counter, table index, or scratch register, wrap that code in `PHX`/`PLX`. The same applies to any inline code that modifies X between COP calls — always restore it before the next COP instruction.
+
+**Typical symptoms:** Freeze or crash immediately on the COP call; newly spawned actors appear with corrupt state; linked list corruption causing infinite actor loop execution.
+
+### Actor Entry Point ($00/$01) Must Not Be Corrupted Before Yield
+
+**Problem:** `COP [SetEntryHere]` saves the re-entry address into the actor's `$00`/`$01` fields (the low word of the code pointer). If subsequent code overwrites `$00` via `STA $0000` (DP write with D = actor slot), the entry point is corrupted. When the actor yields (RTL) and the engine re-enters it next frame, it jumps to a garbage address.
+
+**Root cause:** Several engine APIs use `$0000` as a parameter-passing convention — for example, `LookupMapName` reads the search key from `CMP $0000` (DP offset $00). Writing the parameter via `STA $0000` also overwrites the SetEntryHere entry point, since both resolve to the actor's $00 field.
+
+The original game code gets away with this because those `STA $0000` calls occur in **one-shot sequences** (gravity animations, route handlers) that immediately continue to another `SetEntryHere` or `COP [Die]` without ever yielding. In a **looping actor** that yields via RTL every frame, the corrupted entry point persists until re-entry.
+
+**Example:**
+```asm
+; WRONG — STA $0000 overwrites the SetEntryHere entry point
+wmcLoop:
+    COP [SetEntryHere]       ; saves re-entry address to $00/$01
+    JSL $@SomeUpdate
+    LDA $sceneId
+    STA $0000                ; ← overwrites $00/$01 with scene ID!
+    JSR $&LookupMapName      ; reads $0000 as search key — works
+    ; ...
+    RTL                      ; ← engine re-enters at $07:$00xx → CRASH
+
+; CORRECT — save/restore $00 around the parameter write
+wmcLoop:
+    COP [SetEntryHere]
+    JSL $@SomeUpdate
+    LDA $00
+    PHA                      ; save entry point low word
+    LDA $sceneId
+    STA $0000                ; scene ID for LookupMapName
+    JSR $&LookupMapName
+    PLA
+    STA $00                  ; restore entry point
+    ; ...
+    RTL                      ; ← engine re-enters at correct address ✓
+```
+
+**Rule:** In any actor that loops via `SetEntryHere` + `RTL`, never write to DP `$00`/`$01` (the entry point) without saving and restoring the original value. If you need to pass a parameter through `$0000` to engine APIs, bracket the write with `PHA`/`PLA` of the current `$00` value. One-shot sequences that end in `COP [Die]` are safe since the entry point is never re-used.

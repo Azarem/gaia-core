@@ -71,7 +71,7 @@ export class PostProcessor {
     // Add the master lookup (use location - 1 to avoid overwriting the first entry)
     newParts.push({ location: block.location - 1, object: lookupList });
 
-    const newBlockName = `${block.parts[0].objList[0].object[0].name}_list`;
+    const newBlockName = `${block.parts[0].objList[0].object[0].name.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase()}_list`;
 
     //Add mater lookup name
     this._referenceManager.nameTable.set(block.location - 1, newBlockName);
@@ -137,7 +137,7 @@ export class PostProcessor {
     const keyLookup: Record<number, string> = {};
     let endKey = -1;
 
-    listName ??= structType;
+    listName ??= structType.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
 
     for (const part of block.parts) {
 

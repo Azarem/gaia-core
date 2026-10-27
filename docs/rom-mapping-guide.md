@@ -1267,7 +1267,7 @@ String commands are byte sequences embedded within strings that control text for
 | `[DLG:x,y]` | 193 | Byte, Byte | Set dialog box position and size |
 | `[TPL:n]` | 194 | Byte | Set text palette |
 | `[PAL:n]` | 195 | Byte | Set overall palette |
-| `[ADR:offset,word]` | 197 | Offset, Word | Address reference (text pointer) |
+| `[TBL:offset,word]` | 197 | Offset, Word | Address reference (text pointer) |
 | `[BCD:addr,len]` | 198 | Word, Word | Print BCD number from RAM |
 | `[SIZ:w,h]` | 199 | Byte, Byte | Set dialog box dimensions |
 | `[CLD]` | 200 | None | Clear dialog box |
@@ -1275,7 +1275,7 @@ String commands are byte sequences embedded within strings that control text for
 | `[RET]` | 202 | None | Return (close without clearing) |
 | `[N]` | 203 | None | Newline |
 | `[SKP:n]` | 204 | Byte | Skip N pixels horizontally |
-| `[PRT:addr]` | 205 | Address | Print string at address |
+| `[STR:addr]` | 205 | Address | Print string at address |
 | `[CLR]` | 206 | None | Clear text |
 | `[FIN]` | 207 | None | Finalize |
 | `[WAI]` | 208 | None | Wait for button press |
@@ -1334,7 +1334,7 @@ dialogstring_048479 `[DLG:3,11][SIZ:D,3]You've found[N]a Red Jewel![END]`
 **ConsoleString** — pipe delimiters (`|`):
 
 ```asm
-consolestring_01DA47 |[NHM:4][CUR:D0,4]PUSH START BUTTON|
+consolestring_01DA47 |[PAL:4][POS:D0,4]PUSH START BUTTON|
 ```
 
 **SpriteString** — tilde delimiters (`~`):

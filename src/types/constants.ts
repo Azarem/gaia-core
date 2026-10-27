@@ -1,4 +1,47 @@
 /**
+ * Override directive declared by a patch label suffix.
+ *
+ * | kind      | symbol    | verb              | effect                                              |
+ * |-----------|-----------|-------------------|-----------------------------------------------------|
+ * | `replace` | `Label!`  | `Label.replace`   | replace the whole block                             |
+ * | `before`  | `Label-`  | `Label.before`    | splice a new part before the block                  |
+ * | `after`   | `Label+`  | `Label.after`     | splice a new part after the block                   |
+ * | `head`    | `Label-=` | `Label.prepend`   | merge content into the start of the block           |
+ * | `tail`    | `Label+=` | `Label.append`    | merge content onto the end of the block             |
+ * | `bytes`   | `Label#1F`| `Label.at(1F)`    | replace bytes at a hex offset inside the block      |
+ */
+export type PatchOverrideKind = 'replace' | 'before' | 'after' | 'head' | 'tail' | 'bytes';
+
+/** A parsed patch override directive (see RomProcessingConstants.parseOverride) */
+export interface PatchOverride {
+  /** Target label with the directive suffix removed */
+  name: string;
+  kind: PatchOverrideKind;
+  /** Byte offset into the target block (only meaningful for `bytes`; 0 otherwise) */
+  offset: number;
+}
+
+const OVERRIDE_SYMBOLS: Record<string, PatchOverrideKind> = {
+  '!': 'replace',
+  '-': 'before',
+  '+': 'after',
+  '-=': 'head',
+  '+=': 'tail',
+};
+
+const OVERRIDE_VERBS: Record<string, PatchOverrideKind> = {
+  replace: 'replace',
+  before: 'before',
+  after: 'after',
+  prepend: 'head',
+  append: 'tail',
+  at: 'bytes',
+};
+
+/** `Label.verb` / `Label.at(1F)` */
+const OVERRIDE_VERB_REGEX = /^(.+)\.(replace|before|after|prepend|append|at)(?:\(([0-9a-f]*)\))?$/i;
+
+/**
  * ROM processing constants
  * Converted from GaiaLib/Types/RomProcessingConstants.cs
  */
@@ -21,8 +64,6 @@ export class RomProcessingConstants {
   public static readonly LABEL_SPACE = ['[', '{', '#', '`', '~', '|', ':', '&', '^', '*'];
   public static readonly OBJECT_SPACE = ['<', '['];
   public static readonly COP_SPLIT_CHARS = [' ', '\t', ',', '(', ')', '[', ']', '$', '#'];
-  public static readonly OVERRIDE_CHARS = ['!', '+', '-'];
-
   // Pre-compiled regular expressions for parsing
   public static readonly WHITESPACE_REGEX = /[ \t]/;
   public static readonly COMMA_SPACE_REGEX = /[, \t]/;
@@ -34,6 +75,13 @@ export class RomProcessingConstants {
   
   // Trim patterns (for start/end of string)
   public static readonly COMMA_SPACE_TRIM_REGEX = /^[, \t]+|[, \t]+$/g;
+
+  /**
+   * Matches a parenthesised byte-replacement label (`Label.at(1F)`) at the start of a line.
+   * `(` and `)` are symbol characters, so this label must be recognised before the line is split into
+   * mnemonic/operand. It must be followed by a block opener (`{`, `[`) or colon label.
+   */
+  public static readonly AT_LABEL_REGEX = /^[^\s,<>()\[\]{}:`~|]+\.at\([0-9a-f]*\)(?=\s*[\[{:])/i;
 
   
   // Platform detection that works in both Node.js and web environments
@@ -51,6 +99,55 @@ export class RomProcessingConstants {
   })();
 
   public static readonly NEWLINE = RomProcessingConstants.IS_WINDOWS ? '\r\n' : '\n';
+
+  /**
+   * Parses a patch label as an override directive.
+   *
+   * Symbol forms:
+   * - `Label!`      replace the matched block
+   * - `Label-`      splice a new part before the matched block
+   * - `Label+`      splice a new part after the matched block
+   * - `Label-=`     merge content into the head (start) of the matched block
+   * - `Label+=`     merge content onto the tail (end) of the matched block
+   * - `Label#`      replace bytes at offset 0 of the matched block
+   * - `Label#1F`    replace bytes at hex offset 0x1F of the matched block
+   *
+   * Verb forms (case-insensitive; the verb must follow the last `.` of the label):
+   * `Label.replace`, `Label.before`, `Label.after`, `Label.prepend`, `Label.append`,
+   * `Label.at` / `Label.at(1F)`
+   *
+   * @returns The parsed override, or null when the label is a plain label
+   */
+  public static parseOverride(label: string | undefined | null): PatchOverride | null {
+    if (!label) return null;
+
+    // Verb forms
+    const verb = OVERRIDE_VERB_REGEX.exec(label);
+    if (verb) {
+      const kind = OVERRIDE_VERBS[verb[2].toLowerCase()];
+      const hex = verb[3];
+      if (hex !== undefined && kind !== 'bytes') return null; // Only `.at` takes an argument
+      return { name: verb[1], kind, offset: hex ? parseInt(hex, 16) : 0 };
+    }
+
+    // Symbol forms - compound (`+=`, `-=`) before single character
+    const suffix = label.endsWith('=') ? label.slice(-2) : label[label.length - 1];
+    const symbolKind = OVERRIDE_SYMBOLS[suffix];
+    if (symbolKind && label.length > suffix.length) {
+      return { name: label.slice(0, -suffix.length), kind: symbolKind, offset: 0 };
+    }
+
+    // Byte replacement: `Label#` / `Label#1F`
+    const hashIx = label.lastIndexOf('#');
+    if (hashIx > 0) {
+      const hex = label.substring(hashIx + 1);
+      if (/^[0-9a-f]*$/i.test(hex)) {
+        return { name: label.substring(0, hashIx), kind: 'bytes', offset: hex.length ? parseInt(hex, 16) : 0 };
+      }
+    }
+
+    return null;
+  }
 
   public static stripMarkers(name: string): { raw: string, name: string, isSoft: boolean, isRaw: boolean } {
     let isSoft = false;

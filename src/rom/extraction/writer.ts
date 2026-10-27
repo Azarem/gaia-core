@@ -187,23 +187,29 @@ export class BlockWriter {
       }
       return this._referenceManager.resolveName(obj, AddressType.Address, isBranch, this._currentBlock);
     }
-    
-    if (this.getObjectType(obj) === ObjectType.LocationWrapper) {
-      const lw = obj as LocationWrapper;
-      return this._referenceManager.resolveName(lw.location, lw.type, isBranch, this._currentBlock);
-    }
-    if (this.getObjectType(obj) === ObjectType.Address) {
-      const addr = obj as Address;
-      const isWram = addr.isWram;
 
-      if (isWram || (addr.isCodeBank && addr.offset < Address.UPPER_BANK)) {
-        const offset = isWram ? addr.toInt() : addr.offset;
-        const label = this._root.mnemonics[offset];
-        if (label) return (isWram && addr.isShort) ? `S_${label}` : (!isWram && !addr.isShort) ? `L_${label}` : label;
-      }
-      
-      return addr.isShort ? addr.offset : addr.toString();
+    switch (this.getObjectType(obj)) {
+      case ObjectType.LocationWrapper:
+        const lw = obj as LocationWrapper;
+        return this._referenceManager.resolveName(lw.location, lw.type, isBranch, this._currentBlock);
+      case ObjectType.Address:
+        const addr = obj as Address;
+        const isWram = addr.isWram;
+        let label = '';
+  
+        if (isWram || (addr.isCodeBank && addr.offset < Address.UPPER_BANK)) {
+          const offset = isWram ? addr.toInt() : addr.offset;
+          label = this._root.mnemonics[offset];
+          if (label) return (isWram && addr.isShort) ? `S_${label}` : (!isWram && !addr.isShort) ? `L_${label}` : label;
+        }
+
+        return addr.isShort ? addr.offset : addr.toString();
+
+      // case ObjectType.StructDef:
+      //   const struct = obj as StructDef;
+      //   return struct;
     }
+    
 
     // Preserve tag information on typed numbers without resolving names
     if (obj && obj instanceof TypedNumber) {
@@ -312,6 +318,17 @@ export class BlockWriter {
 
       case ObjectType.Address:
         const addr = obj as Address;
+        const isWram = addr.isWram;
+
+        if (isWram || (addr.isCodeBank && addr.offset < Address.UPPER_BANK)) {
+          const offset = isWram ? addr.toInt() : addr.offset;
+          const label = this._root.mnemonics[offset];
+          if (label) {
+            objLines = [(isWram && addr.isShort) ? `$S_${label}` : (!isWram && !addr.isShort) ? `$L_${label}` : `$${label}`];
+            break;
+          }
+        }
+
         objLines = [`$${isArray ? '#' : ''}${addr.isShort ? addr.toOffsetString() : addr.toString()}`];
         break;
 
