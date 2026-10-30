@@ -14,6 +14,8 @@ import { DbRoot } from '../../database';
 import { BlockReader } from './blocks';
 import { ReferenceManager } from './references';
 import { PostProcessor } from './postprocessor';
+import type { TransformWarning } from '../../types/transforms';
+import { reportTransformWarnings } from './transform-warnings';
 
 // Type tags for better object identification
 export enum ObjectType {
@@ -38,6 +40,9 @@ export class BlockWriter {
   private _isInline: boolean = false;
   private _currentPart: AsmBlock | null = null;
   private _currentBlock: ChunkFile | undefined = undefined;
+
+  /** Transforms that were invalid or matched nothing while generating asm (see `getTransformWarnings`). */
+  public readonly transformWarnings: TransformWarning[] = [];
 
   constructor(reader: BlockReader) {
     this._blockReader = reader;
@@ -147,15 +152,7 @@ export class BlockWriter {
 
     let content = lines.join(RomProcessingConstants.NEWLINE);
 
-    // Apply replace transforms
-    if (block.transforms) {
-      for (const x of block.transforms) {
-        if (x.key && x.value !== undefined) {
-          const regex = new RegExp(x.key, 'g');
-          content = content.replace(regex, x.value);
-        }
-      }
-    }
+    content = this.applyTransforms(block, content);
 
     if(!RomProcessingConstants.IS_WINDOWS){
       content = content.replace(/\r/g, '');
@@ -163,6 +160,48 @@ export class BlockWriter {
 
     return content;
   };
+
+  /** Applies the block's `transforms.json` regex replacements, recording a warning for each one that does nothing. */
+  private applyTransforms(block: ChunkFile, content: string): string {
+    block.transforms?.forEach((x, i) => {
+      if (!x.key || x.value === undefined) return;
+
+      const warn = (kind: TransformWarning['kind'], detail?: string) =>
+        this.transformWarnings.push({ kind, block: block.name, index: i + 1, key: x.key, count: 1, detail });
+
+      let regex: RegExp;
+      try {
+        regex = new RegExp(x.key, 'g');
+      } catch (error) {
+        warn('invalid-regex', error instanceof Error ? error.message : String(error));
+        return;
+      }
+
+      if (!regex.test(content)) {
+        warn('no-match');
+        return;
+      }
+
+      regex.lastIndex = 0;
+      content = content.replace(regex, x.value);
+    });
+    return content;
+  }
+
+  /**
+   * All transforms that were not applied: blocks missing from blocks.json (found at load time)
+   * plus patterns that were invalid or matched nothing in the blocks written so far.
+   */
+  getTransformWarnings(): TransformWarning[] {
+    return [...this._root.transformWarnings, ...this.transformWarnings];
+  }
+
+  /** Prints a grouped summary of unapplied transforms to the console (silent when all were applied). */
+  reportTransformWarnings(): TransformWarning[] {
+    const warnings = this.getTransformWarnings();
+    reportTransformWarnings(warnings);
+    return warnings;
+  }
 
   private getMnemonicsForBlock(block: ChunkFile): [string, string][] {
     if (!block.mnemonics) {
@@ -381,7 +420,7 @@ export class BlockWriter {
 
       if (t.location === this._currentPart?.location) name = this._currentPart.label;
       if (!name) name = this._referenceManager.tryGetName(t.location).referenceName;
-      if (!name) name = `loc_${t.location.toString(16).toUpperCase().padStart(6, '0')}`;
+      if (!name) name = this._referenceManager.createLocationFallbackName(t.location);
       
       const objectLines = this.writeObject(t.object, depth + 1);
 
@@ -426,7 +465,7 @@ export class BlockWriter {
       if (!first || depth > 0) {
         // Check for labels on subsequent instructions
         let label = this._referenceManager.tryGetName(op.location)?.referenceName;
-        if (!label && first && depth > 0) label = `code_${op.location.toString(16).toUpperCase().padStart(6, '0')}`;
+        if (!label && first && depth > 0) label = this._referenceManager.createCodeLabel(op.location);
         if(label) {
 
           const notes = this._root.partNotes[label];

@@ -5,6 +5,7 @@ export * from './references';
 export * from './addressing';
 export * from './stack';
 export * from './transforms';
+export * from './transform-warnings';
 //export * from './sfx';
 //export * from './files';
 export * from './cop';

@@ -62,6 +62,7 @@ export class RomGenerator {
     for(const block of chunkFiles) {
       if(block.parts?.length) block.textData = writer.generateAsm(block);
     }
+    writer.reportTransformWarnings();
 
     //Apply baserom files
     for (const chunkFile of this.dbRoot.baseRomFiles!) this.applyPatchFile(chunkFile, chunkFiles, asmFiles, patchFiles);

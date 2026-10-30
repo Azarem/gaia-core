@@ -329,7 +329,7 @@ export class TypeParser {
       //const resolvedTypeName = typeName[0] === '~' ? typeName.substring(1) : typeName;
       // If the location is not already in the reference table, add it
       //const referenceName = `${resolvedTypeName.toLowerCase()}_${adrs.toString()}`;
-      const referenceName = `${typeName.replaceAll('-', '_').toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`;
+      const referenceName = this._referenceManager.prefixName(`${typeName.replaceAll('-', '_').toLowerCase()}_${loc.toString(16).toUpperCase().padStart(6, '0')}`);
       this._referenceManager.tryAddName(loc, isSoft ? "~" + referenceName : referenceName);
     }
 

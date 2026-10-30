@@ -1,6 +1,14 @@
 # Notes and Comments System
 
-The GaiaLabs engine provides a three-tier annotation system for documenting disassembled ROM code. Annotations are stored as JSON files in a `notes/` directory at the **baserom project root** and are **inserted into the extracted `.asm` files during extraction**. They are not embedded in the ROM itself — they live alongside the database triad (`blocks.json`, `overrides.json`, `names.json`) as a documentation layer.
+> **Process rule: only two scripts change notes and names, and agents never write their own.**
+> - Notes and comments: `npm run merge -- <spec.json>` ([Notes Merge](#implemented-notes-merge-npm-run-merge)).
+> - Names (`db-us/names/bankNN.json`): `npm run names -- <spec.json>` ([Names Merge](#implemented-names-merge-npm-run-names)).
+>
+> The `ingest` and `annotate` commands were **removed** (they read the extracted `.asm` back into `notes/`, so a stale or line-tracked extract silently overwrote or duplicated notes). Do not recreate them. If `merge` or `names` lacks a feature, extend it in `src/` and document it here; do not write a throwaway `.py`/`.mjs`/`.sh` script.
+
+The GaiaLabs engine provides a three-tier annotation system for documenting disassembled ROM code. Annotations are stored as JSON files in a `notes/` directory at the **baserom project root** and are **inserted into the extracted `.asm` files during extraction**. They are not embedded in the ROM itself — they are a documentation layer that lives alongside the database files (`blocks.json`, `overrides.json`, `names/bankNN.json`).
+
+**Names are the companion layer.** The labels that part notes attach to live in `db-us/names/bankNN.json`, split by ROM bank exactly like the notes. Unlike notes, names are *functional* — they change the labels the engine emits and resolves — so they are bundled into the published package. See [Names](#names-db-usnamesbanknnjson).
 
 **Notes are local-only.** The `notes/` directory is excluded from the npm package (`package.json` `files` field does not include it). When the baserom is installed as a dependency via npm, no notes are present and the module operates without them. When the repo is cloned locally, the `notes/` directory is available and the module loads all annotations at startup via filesystem discovery. This keeps the published package lightweight while giving local contributors full documentation in their extracted `.asm` files.
 
@@ -23,7 +31,7 @@ During **rebuild**, the assembler strips all comments (`;`, `--`, `//` prefixes)
 }
 ```
 
-**How they appear in extracted ASM:** Block notes are emitted at the very top of the `.asm` file, before the `?BANK` directive and `?INCLUDE` list. Each line of the note is prefixed with `; ` and followed by a separator line:
+**How they appear in extracted ASM:** Block notes are emitted at the very top of the `.asm` file, before the `?BANK` directive (when the file has one; movable blocks do not) and `?INCLUDE` list. Each line of the note is prefixed with `; ` and followed by a separator line:
 
 ```asm
 ; Combat and interaction collision system (244613–247295, Bank 03).
@@ -60,7 +68,7 @@ if (notes?.length > 0) {
 
 **Location:** `notes/partNotes/bankNN.json` — one file per ROM bank, matching the block notes bank structure.
 
-**File format:** Each bank file is a flat JSON object mapping part/routine names (matching entries in `names.json` or auto-generated `code_XXXXXX` labels) to documentation strings:
+**File format:** Each bank file is a flat JSON object mapping part/routine names (matching entries in `db-us/names/bankNN.json` or auto-generated `code_XXXXXX` labels) to documentation strings:
 
 ```json
 {
@@ -94,6 +102,8 @@ For labels inside a `{ }` code block (internal labels within a routine), notes a
     PHP
     ...
 ```
+
+**Compressed struct files (sprite maps etc.):** These files are extracted in an isolated pass with locations 0-oriented to the file, so the same offset (`sprite_set_000004`) exists in many files. Every *generated* name in such a file is therefore prefixed with the file name: `{fileName}_{generatedName}`, e.g. `spm_credits_sprite_set_00002A`, `spm_credits_sprite_group_000150`, `spm_credits_loc_0001F0`. The root part (location 0) keeps the bare file name (`spm_credits`). Key part notes for these files by the prefixed name. Names you supply yourself (names files, part names in `blocks.json`) are never prefixed. Uncompressed struct files and block parts use absolute ROM locations, are not affected, and keep `sprite_set_0F8076`-style names.
 
 **Engine source:** Part notes are checked in two places in `BlockWriter`:
 
@@ -208,7 +218,7 @@ The `emitLineTracking` flag is set on `DbConfig` (`src/database/config.ts`) when
 
 Comments are keyed by **decimal ROM address**. To compute the address for a given instruction:
 
-1. Start from a known anchor (a named label in `names.json` or a `loc_XXXXXX` label in the ASM, where `XXXXXX` is the hex address)
+1. Start from a known anchor (a named label in `db-us/names/bankNN.json` or a `loc_XXXXXX` label in the ASM, where `XXXXXX` is the hex address)
 2. Add the byte size of each instruction between the anchor and your target
 3. Convert the hex address to decimal for the JSON key
 
@@ -223,7 +233,7 @@ The M flag (set by `SEP #$20`, cleared by `REP #$20`) determines whether immedia
 
 ## Notes Directory Structure
 
-All three annotation tiers are stored in a `notes/` directory at the baserom project root, split by ROM bank:
+All three annotation tiers are stored in a `notes/` directory at the baserom project root, split by ROM bank. Names follow the same bank split under `db-us/names/` (see [Names](#names-db-usnamesbanknnjson)):
 
 ```
 <baserom-root>/
@@ -240,6 +250,11 @@ All three annotation tiers are stored in a `notes/` directory at the baserom pro
       bank00.json        ← inline comments for Bank 00 addresses (32768–65535)
       bank02.json        ← inline comments for Bank 02 addresses (163840–196607)
       bank03.json        ← inline comments for Bank 03 addresses (229376–262143)
+  db-us/
+    names/
+      bank00.json        ← names (address → label) for Bank 00 addresses
+      bank01.json        ← names for Bank 01 addresses
+      ...                ← one file per bank that contains names
 ```
 
 ### Bank assignment
@@ -247,7 +262,8 @@ All three annotation tiers are stored in a `notes/` directory at the baserom pro
 Each annotation goes into the bank file corresponding to the code it documents:
 
 - **Block notes:** The bank is determined by the block's start address in `blocks.json`. For blocks without a direct `start` field (only nested `parts`), use the bank of the first part.
-- **Part notes:** The bank is determined by the routine's address in `names.json`. For routines within a block, they share the block's bank.
+- **Part notes:** The bank is determined by the routine's address (the key of its entry in `db-us/names/bankNN.json`). For routines within a block, they share the block's bank.
+- **Names:** The bank is determined directly from the decimal address key (bank = floor(address / 65536)), exactly like comments.
 - **Comments:** The bank is determined directly from the decimal ROM address key. Bank = floor(address / 65536).
 
 | Bank | Address range (decimal) | Address range (hex) |
@@ -312,7 +328,7 @@ All three annotation types are optional fields on the `DbGameRomModule` interfac
 ```typescript
 export interface DbGameRomModule {
     // ... other fields ...
-    names?: Record<number, string>;       // Address → label name
+    names?: Record<number, string>;       // Address → label name (baserom merges names/bankNN.json)
     comments?: Record<number, string>;    // Address → inline comment
     blockNotes?: Record<string, string>;  // Block name → block documentation
     partNotes?: Record<string, string>;   // Part/routine name → part documentation
@@ -349,15 +365,85 @@ This means:
 - Separator lines (`-----`) are treated as visual separators and ignored
 - The rebuild produces identical binary output regardless of annotation content
 
-## Relationship to names.json
+## Names (`db-us/names/bankNN.json`)
 
-The `names.json` file (located in the database triad directory, e.g., `db-us/names.json`) provides the label names that both part notes and comments reference:
+**Scope:** One label per ROM address — the primary human interface to the disassembly.
 
-- **Part notes** are keyed by the label name string (e.g., `"RunCombatCollision"`) — this must match exactly what appears in `names.json` values or what the engine auto-generates as `code_XXXXXX`
-- **Comments** are keyed by the decimal address (e.g., `"244708"`) — this is the same address space as `names.json` keys
+**Location:** `db-us/names/bankNN.json` — one file per ROM bank, where `NN` is the two-digit hex bank number (e.g., `bank00.json`, `bank0A.json`). Only banks that contain names have a file.
+
+**File format:** Each bank file is a flat JSON object mapping decimal ROM addresses (as string keys) to label names. Keys are sorted ascending, indented with 4 spaces, and the file ends with a newline:
+
+```json
+{
+    "32768": "ResetVector",
+    "32775": "CopVector",
+    "32779": "NmiVector",
+    "33901": "CopDispatch"
+}
+```
+
+**Bank assignment:** The bank is computed from the key itself — bank = floor(address / 65536) — so there is never a judgement call. Every key in `bankNN.json` must satisfy `address >> 16 === 0xNN`. The table above (Bank assignment) applies; Illusion of Gaia currently has names in banks 00–0C.
+
+**How they appear in extracted ASM:** A name replaces the auto-generated `code_XXXXXX` label at that address. Part notes are then keyed by the name string (see [Relationship to Names](#relationship-to-names)).
+
+**Names are not notes.** They share the bank-split layout, but behave differently:
+
+| | Notes (`notes/`) | Names (`db-us/names/`) |
+|--|-------------------|------------------------|
+| Effect on rebuild | None (comments stripped) | Functional — labels are resolved by the assembler |
+| In the npm package | No (`notes/` is not in `files`) | Yes (bundled into `dist`) |
+| Loading | Filesystem discovery of every `.json` in each subdirectory | **Explicit static imports** in `src/names.ts` |
+| Missing / new bank file | Auto-discovered; absent directory → `{}` | A new file is ignored until it is imported; a deleted file breaks the build |
+| Edited by | `npm run merge` | `npm run names` (not touched by merge) |
+
+### How loading works
+
+Because names must ship in the package, the baserom cannot discover them at runtime with `readdirSync` — `db-us/` is not published, only the bundled output is. Instead, `src/names.ts` imports every bank file with a static JSON import and merges them into one flat dictionary:
+
+```typescript
+import bank00 from '../db-us/names/bank00.json' with { type: 'json' };
+import bank01 from '../db-us/names/bank01.json' with { type: 'json' };
+// ... one import per bank file
+
+const bankNames: Record<string, string>[] = [bank00, bank01 /* , ... */];
+
+export const names: Record<string, string> = Object.assign({}, ...bankNames);
+```
+
+`src/index.ts` imports `names` from `./names.ts` and passes it as `names` in the `DbGameRomModule`. The engine (`DbRootUtils.fromGameModule()`) only ever sees the merged dictionary, so **it does not know or care about the split** — the same engine works with a single `names.json` (Robotrek still uses one) or a per-bank directory.
+
+The bank-detection helpers shared with `merge` also read `db-us/names/*.json` directly (every file in the directory) to build its name → bank fallback for bank detection, and `db-us/blocks.json` + `db-us/files.json` to build the primary block-name → bank lookup (`loadDbBankLookup`).
+
+### Adding or renaming a name: `npm run names`
+
+Names (and renames) are changed only with `npm run names -- <spec.json> [--dry-run] [--local-only]`. **Do not write an ad-hoc script and do not hand-edit the bank files**: the command keeps the files sorted and in the right bank, validates the change, and carries the rename into notes, patches and docs in one all-or-nothing pass. See [Names Merge](#implemented-names-merge-npm-run-names).
+
+### Adding a new bank file
+
+A missing `bankNN.json` is created by `npm run names` and imported in `src/names.ts` for you. Doing it by hand (only if you must) means:
+
+1. Create `db-us/names/bankNN.json` containing the names for that bank
+2. Add the matching `import` line and array entry in `src/names.ts` — unlike notes, **this step is required**; a bank file that is not imported is silently ignored by the build
+
+### Validating the split
+
+After bulk edits, check that every key is in the correct bank file, files are sorted and formatted, no address or label is duplicated across files, and every bank file is imported in `src/names.ts`:
+
+```bash
+npm run names -- --check
+```
+
+It prints `Names check: OK (<n> names)` or lists each problem and exits non-zero. Never write a script for this.
+
+## Relationship to Names
+
+The per-bank names files provide the label names that both part notes and comments reference:
+
+- **Part notes** are keyed by the label name string (e.g., `"RunCombatCollision"`) — this must match exactly what appears in a `db-us/names/bankNN.json` value or what the engine auto-generates as `code_XXXXXX`
+- **Comments** are keyed by the decimal address (e.g., `"244708"`) — this is the same address space as the names keys
 - **Block notes** are keyed by the block name from `blocks.json` (e.g., `"combat_collision"`)
 
-When documenting a block, all three note types should be updated together in their respective `bankNN.json` files to maintain consistency.
+When documenting a block, all three note types should be updated together in their respective `bankNN.json` files, and any renamed routines in `db-us/names/bankNN.json`, to maintain consistency.
 
 ## Name Auditing
 
@@ -369,7 +455,7 @@ There are **three distinct naming layers** that may need auditing. Each layer co
 |-------|------|----------|-----------------|
 | **Block names** | `blocks.json` | Top-level block keys and `.asm` filenames | `actor_XXXXXX`, `sF7_actor_XXXXXX`, `func_XXXXXX`, `dm_func_XXXXXX` |
 | **Part names** | `blocks.json` | Keys within a block's `"parts": {}` — routine headers for explicitly mapped pieces | `func_XXXXXX`, `sub_XXXXXX`, `binary_XXXXXX`, `e_actor_XXXXXX` |
-| **Code names** | `names.json` | Labels for auto-discovered code pieces (not in `blocks.json` parts) | `code_XXXXXX`, `loc_XXXXXX` |
+| **Code names** | `db-us/names/bankNN.json` | Labels for auto-discovered code pieces (not in `blocks.json` parts) | `code_XXXXXX`, `loc_XXXXXX` |
 
 Understanding which layer controls a given label is essential — renaming in the wrong file has no effect.
 
@@ -377,11 +463,11 @@ Understanding which layer controls a given label is essential — renaming in th
 
 1. **`blocks.json` parts** take first priority. If a piece is explicitly defined as a part in `blocks.json`, its **key name in the JSON** becomes the label in the extracted `.asm`. These appear as `func_XXXXXX`, `sub_XXXXXX`, `binary_XXXXXX`, `actor_XXXXXX`, and `e_actor_XXXXXX` prefixed labels.
 
-2. **`names.json`** provides labels for auto-discovered pieces — code the engine finds through reference tracing and branch analysis that is **not** explicitly mapped in `blocks.json` parts. These appear as `code_XXXXXX` prefixed labels when unnamed. A `names.json` entry at the piece's start address overrides the auto-generated `code_XXXXXX` label.
+2. **`db-us/names/bankNN.json`** provides labels for auto-discovered pieces — code the engine finds through reference tracing and branch analysis that is **not** explicitly mapped in `blocks.json` parts. These appear as `code_XXXXXX` prefixed labels when unnamed. A names entry at the piece's start address (in the bank file for that address) overrides the auto-generated `code_XXXXXX` label.
 
 3. **`overrides.json`** does **not** support naming. The `"name"` key in overrides is deprecated and non-functional. Do not use it.
 
-**Key implication:** If you see a `func_08D7EA` label in the `.asm` output and add an entry to `names.json` at that address, it will have **no effect** — because that label comes from a `blocks.json` part key, which takes precedence. To rename it, you must change the key in `blocks.json`.
+**Key implication:** If you see a `func_08D7EA` label in the `.asm` output and add an entry to `db-us/names/bankNN.json` at that address, it will have **no effect** — because that label comes from a `blocks.json` part key, which takes precedence. To rename it, you must change the key in `blocks.json`.
 
 ### When to audit names
 
@@ -432,7 +518,7 @@ for group_name, group_data in blocks.items():
 3. **Preserve the scene/area prefix** if present (e.g., `sF7_`, `ec12_`, `gw85_`, `dm41_`) — these encode the scene ID and area, which is valuable organizational context
 4. Use a targeted string replacement in `blocks.json` — replace `"old_name":` with `"new_name":` (include the colon to avoid partial matches)
 5. **Do not use `json.dump()`** to rewrite the entire file — this destroys the compact formatting. Use string replacement or a formatting-preserving script
-6. Update `names.json` if the block's start address needs a matching label
+6. Update the names entry (`db-us/names/bankNN.json`, bank = floor(start / 65536)) if the block's start address needs a matching label
 7. Run `npm run extract` to verify the rename propagated correctly
 
 **Example renames:**
@@ -479,29 +565,29 @@ scan_parts(blocks)
 
 1. Read the code at the part's address range to understand what it does
 2. Rename the key in `blocks.json` using targeted string replacement (same formatting rules as block renames)
-3. Add a corresponding entry in `names.json` mapping the part's start address (decimal) to the new name
+3. Add a corresponding entry in `db-us/names/bankNN.json` mapping the part's start address (decimal) to the new name — bank = floor(address / 65536)
 4. Update any part notes in `notes/partNotes/bankNN.json` to use the new key
 5. Run `npm run extract` to verify
 
 **When to defer part renames:** During a block-level audit pass, focus on block names. Part names can be deferred to the full per-file annotation audit, where you're already reading each routine in detail and writing part notes.
 
-### Auditing code names in names.json
+### Auditing code names in db-us/names/
 
-Code names are entries in `names.json` that label auto-discovered pieces. These are the most common rename target because the engine generates large numbers of `code_XXXXXX` labels automatically.
+Code names are entries in `db-us/names/bankNN.json` that label auto-discovered pieces. These are the most common rename target because the engine generates large numbers of `code_XXXXXX` labels automatically.
 
-**How to update names.json:**
+**How to update a name:**
 
-1. Open the names file (e.g., `db-us/names.json`)
+1. Open the bank file for the routine's address (`db-us/names/bankNN.json`, where bank = floor(address / 65536))
 2. Find the address entry (decimal key) for the routine you want to rename
 3. Change the value string to the new name
 4. **Update the corresponding part note key** in `notes/partNotes/bankNN.json` to match the new name exactly
 5. Run `npm run extract` to verify the new label appears correctly in the `.asm` output
 
-**Critical:** Part notes are keyed by the name string. If you rename an address in `names.json` from `"OldName"` to `"NewName"`, you **must** also rename the key in `partNotes/bankNN.json` from `"OldName"` to `"NewName"`. Mismatched keys result in orphaned part notes that never appear in the extracted output. Comments are unaffected by renames because they are keyed by decimal address.
+**Critical:** Part notes are keyed by the name string. If you rename an address in `db-us/names/bankNN.json` from `"OldName"` to `"NewName"`, you **must** also rename the key in `partNotes/bankNN.json` from `"OldName"` to `"NewName"`. Mismatched keys result in orphaned part notes that never appear in the extracted output. Comments are unaffected by renames because they are keyed by decimal address.
 
 ### Names ↔ notes coordination table
 
-| Change | blocks.json | names.json | partNotes | comments |
+| Change | blocks.json | names/bankNN.json | partNotes | comments |
 |--------|------------|-----------|-----------|----------|
 | Rename a block | Update block key | Add/update start address entry | No change (keyed by block name, not parts) | No change |
 | Rename a part | Update part key | Add/update start address entry | Rename key to match | No change |
@@ -517,7 +603,7 @@ When renaming a block, part, or code piece, **all references to the old name mus
 **Block rename (key in `blocks.json` top-level within a group):**
 
 1. Rename the key in `blocks.json` via targeted string replacement
-2. Add/update `names.json` entry at the block's start address
+2. Add/update the `db-us/names/bankNN.json` entry at the block's start address
 3. Rename the key in `notes/blockNotes/bankNN.json`
 4. Find-and-replace the old name inside the **text content** of all `notes/` JSON files (block notes, part notes, and comments may reference the old name in their description text)
 5. Run `npm run extract` to verify
@@ -525,14 +611,14 @@ When renaming a block, part, or code piece, **all references to the old name mus
 **Part rename (key within a block's `"parts": {}` in `blocks.json`):**
 
 1. Rename the part key in `blocks.json` via targeted string replacement
-2. Add/update `names.json` entry at the part's start address
+2. Add/update the `db-us/names/bankNN.json` entry at the part's start address
 3. Rename the key in `notes/partNotes/bankNN.json` (find the entry under the parent block's key group)
 4. Find-and-replace the old name inside the **text content** of all `notes/` JSON files
 5. Run `npm run extract` to verify
 
-**Code name rename (value in `names.json`):**
+**Code name rename (value in `db-us/names/bankNN.json`):**
 
-1. Update the value in `names.json`
+1. Update the value in `db-us/names/bankNN.json`
 2. Rename the key in `notes/partNotes/bankNN.json`
 3. Find-and-replace the old name inside the **text content** of all `notes/` JSON files
 4. Run `npm run extract` to verify
@@ -546,8 +632,11 @@ import json, os, re
 
 with open('db-us/blocks.json', encoding='utf-8') as f:
     blocks_data = json.load(f)
-with open('db-us/names.json', encoding='utf-8') as f:
-    names = json.load(f)
+names = {}
+for fname in sorted(os.listdir('db-us/names')):
+    if fname.endswith('.json'):
+        with open(f'db-us/names/{fname}', encoding='utf-8') as f:
+            names.update(json.load(f))
 
 # Collect all valid block names, part names, and named code labels
 block_names = set()
@@ -587,7 +676,7 @@ for fname in sorted(os.listdir('notes/partNotes')):
 Old names can also appear inside note *text content* (e.g., a block note that says "calls func_08D7EA"). After renames, scan for stale references:
 
 ```python
-# Build old-name -> new-name mapping from names.json
+# Build old-name -> new-name mapping from db-us/names/
 old_to_new = {}
 for addr, name in names.items():
     hex_addr = format(int(addr), '06X')
@@ -608,7 +697,7 @@ for note_dir in ['notes/partNotes', 'notes/blockNotes', 'notes/comments']:
                 print(f'STALE REF: {note_dir}/{fname}: {old_label} -> {new_name}')
 ```
 
-⚠ **When replacing old names in text content**, beware of substring matches. If `actor_0BC9BD` is replaced with `sFC_actor_0BC9BD`, but the text already contains `sFC_actor_0BC9BD`, you'll get the double-prefix `sFC_sFC_actor_0BC9BD`. Use word-boundary-aware replacement or check for existing prefixes before replacing.
+⚠ **When replacing old names in text content**, beware of substring matches. If `actor_0BC9BD` is replaced with `sFC_title_start_poll`, but the text already contains `sFC_title_start_poll`, you'll get the double-prefix `sFC_sFC_actor_0BC9BD`. Use word-boundary-aware replacement or check for existing prefixes before replacing.
 
 ### Naming conventions
 
@@ -636,8 +725,9 @@ Follow the conventions established in the existing codebase:
 | Block | `notes/blockNotes/bankNN.json` | Block name (string) | Multi-line documentation | Top of `.asm` file, before `?BANK` |
 | Part | `notes/partNotes/bankNN.json` | Routine label (string) | Multi-line documentation | Before routine label in `.asm` |
 | Line | `notes/comments/bankNN.json` | Decimal ROM address (string) | Single-line comment | End of instruction line, padded to col 25 |
+| Name | `db-us/names/bankNN.json` | Decimal ROM address (string) | Label name | Label at that address (replaces `code_XXXXXX`) |
 
-All three are injected during extraction, stripped during rebuild, and stored as plain JSON in the `notes/` directory at the baserom project root. The `notes/` directory is excluded from the npm package — annotations are only available in local/cloned repos.
+The three note tiers are injected during extraction, stripped during rebuild, and stored as plain JSON in the `notes/` directory at the baserom project root. The `notes/` directory is excluded from the npm package — annotations are only available in local/cloned repos. Names are stored in `db-us/names/`, are functional (they drive the labels in both extract and rebuild), and ship with the package.
 
 ---
 
@@ -903,17 +993,17 @@ The recommended process for annotating a new block:
 2. **Count and catalog** — count every named routine in the file. Note `?INCLUDE` directives that pull in other blocks. Verify the block note's handler/routine count matches reality.
 3. **Run location-tagged extraction** — run `npm run extract:lt` to produce address-tagged output. Every uncommented instruction now shows its decimal ROM address as `; {address}`.
 4. **Determine the bank** — identify which ROM bank the block lives in (bank = floor(start_address / 65536)).
-5. **Audit names** — check every label in `names.json` for accuracy against the code you just read. Rename generic (`code_XXXXXX`) or misleading labels. See [Name Auditing](#name-auditing-and-namesjson-maintenance).
-6. **Edit the `.asm` file directly** — add block notes (top of file), part notes (before labels), and inline comments (after `; {address}` tags) in the extracted `.asm` file itself.
-7. **Run `npm run ingest`** — the ingest script parses your edits and writes them to the correct `notes/` JSON files automatically. No manual JSON editing required.
-8. **Run standard extraction** — run `npm run extract` (without `lt`) to verify the final output reads naturally with comments replacing the location tags.
+5. **Audit names** — check every label in `db-us/names/bankNN.json` for accuracy against the code you just read. Rename generic (`code_XXXXXX`) or misleading labels. See [Name Auditing](#name-auditing).
+6. **Write an edit spec** — describe the block note, part notes (by label) and inline comments (by `{address}` tag) as JSON. See [Notes Merge](#implemented-notes-merge-npm-run-merge). Use `"expect"` on comments to guard against a wrong address.
+7. **Run `npm run merge -- <spec.json> --dry-run`, then without `--dry-run`** — the tool validates every edit against the extracted `.asm`, writes the entries straight into `notes/` JSON, and re-reads the files to verify them. The `.asm` is not edited and no manual JSON editing is required. Do not use `annotate` or `ingest`.
+8. **Re-run `npm run extract:lt`** (or plain `npm run extract`) — the extractor re-reads `notes/`, so this is the verification: read the output to confirm the notes and comments render as intended.
 9. **Review the extracted ASM** — read it as a consumer would, checking that the comments provide sufficient context without clutter.
 
-> **Why the ingest step?** Agents and humans edit `.asm` files directly — this is natural and eliminates JSON key-value authoring errors. The `ingest` script handles bank detection, JSON key generation, merge/update/delete logic, and file sorting automatically. See [Notes Ingestion Script](#implemented-notes-ingestion-script-npm-run-ingest) for full details.
+> **Why merge?** `merge` turns "what to say and where" directly into `notes/` JSON entries, so no one hand-formats notes, hand-edits JSON, or writes edit scripts, and there is no `.asm` round-trip to go wrong. It is the only supported way to change notes and comments. See [Notes Merge](#implemented-notes-merge-npm-run-merge).
 
 ### Verifying Comments After Writing
 
-After running `npm run ingest` (or modifying any comment JSON files manually), always run standard extraction to verify:
+After running `npm run merge` (or modifying any comment JSON files manually), always run standard extraction to verify:
 
 ```bash
 cd <baserom-repo>
@@ -931,6 +1021,8 @@ To check coverage, you can also run `npm run extract:lt` — any remaining `; {a
 ### ⚠ STOP — Read Before Bulk-Modifying Comment JSON Files
 
 **If you are about to write a script that modifies more than 10 comment entries at once, STOP.** Read the [Critical Rules for Comment JSON Manipulation](#critical-rules-for-comment-json-manipulation) section first. Bulk comment manipulation has caused the loss of ~1,000 valid entries. The rules exist to prevent this from happening again.
+
+> **Exception:** `npm run merge` is the sanctioned way to change many entries at once. `merge` touches only the entries named in its spec, validates every address and label before writing, never empties or rewrites whole JSON files, and verifies the outcome. The rules below still apply to any *other* script that touches `notes/` JSON.
 
 **Minimum safety protocol:**
 1. Ask the user to `git commit` the current state before ANY bulk changes (agents must never commit)
@@ -1068,7 +1160,7 @@ For a file with ~100 instruction lines, this process could easily take 30+ minut
 
 The `emitLineTracking` config option (exposed via `npm run extract:lt`) solves this entirely. The engine emits `; {decimal_address}` on every uncommented instruction line, making the JSON key visible in-place. See the [Location-Tagged Extraction](#location-tagged-extraction-extractlt) section for details.
 
-**Impact:** Comment address errors drop to zero. The annotation time for inline comments is reduced to reading the code and deciding *what to say*, not *where to say it*. Combined with the `npm run ingest` script, agents can edit `.asm` files directly and have all annotations synchronized to JSON automatically.
+**Impact:** Comment address errors drop to zero. The annotation time for inline comments is reduced to reading the code and deciding *what to say*, not *where to say it*. Combined with `npm run merge`, agents give the address in a JSON spec and the tool validates it against the tag.
 
 ### Observation: Comment Placement on the First Instruction of a Group
 
@@ -1096,12 +1188,12 @@ Many item handlers follow identical structural patterns (check scene → check t
 
 ### Observation: Block Notes and Part Notes Don't Need Addresses
 
-Block notes and part notes are keyed by **name strings** (block names from `blocks.json`, routine labels from `names.json`), not by addresses. This means they can be written entirely from the standard `extract` output — `extract:lt` is only needed for inline comments.
+Block notes and part notes are keyed by **name strings** (block names from `blocks.json`, routine labels from `db-us/names/bankNN.json`), not by addresses. This means they can be written entirely from the standard `extract` output — `extract:lt` is only needed for inline comments.
 
-With the ingest script, the simplest workflow is:
+With `merge`, the simplest workflow is:
 1. Run `extract:lt` (provides both name structure and address tags in one pass)
-2. Edit the `.asm` file — add all three tiers of annotations at once
-3. Run `npm run ingest` — the script handles all three tiers simultaneously
+2. Write one spec with all three tiers (`blockNote`, `partNotes`, `comments`) per file
+3. Run `npm run merge -- <spec.json>` — the tool handles all three tiers simultaneously
 
 ### Future Improvement: Coverage Gap Detection
 
@@ -1132,7 +1224,7 @@ for each address in comments.keys():
 
 **2. Part note name validation (`validate:partNotes`)**
 
-Check every key in `notes/partNotes/bankNN.json` against the union of `names.json` values and auto-generated `code_XXXXXX` labels. Catches:
+Check every key in `notes/partNotes/bankNN.json` against the union of `db-us/names/bankNN.json` values and auto-generated `code_XXXXXX` labels. Catches:
 - Typos in routine names (e.g., `"UseItem_Redjewel"` vs `"UseItem_RedJewel"`)
 - Part notes for routines that were renamed or removed
 - Missing part notes for named routines (coverage report)
@@ -1168,116 +1260,217 @@ A potential evolution would be a structured format:
 
 This would enable tools like "collapse all comments in group X" or "validate that grouped comments are contiguous." However, the added complexity may not be worth it — the current freeform strings with the "comment at first instruction" convention achieve similar grouping implicitly.
 
-### Implemented: Notes Ingestion Script (`npm run ingest`)
+### Implemented: Notes Merge (`npm run merge`)
 
-The `ingest` command eliminates the need to manually edit JSON files. Agents and humans edit the extracted `.asm` files directly, then run the ingest script to synchronize the changes into `notes/` JSON files.
-
-**How to run it:**
+`merge` is the **only way to change notes and comments**. It takes a JSON edit spec and writes each entry **directly into `notes/blockNotes`, `notes/partNotes` and `notes/comments`**; the extracted `.asm` is never edited. The whole process is three steps:
 
 ```bash
 cd <baserom-repo>
-npm run ingest              # Ingest all .asm files
-npm run ingest:dry          # Preview changes without writing (--dry-run)
-npm run ingest:verbose      # Show detailed output (--verbose)
-node src/index.ts ingest -- path/to/file.asm   # Ingest a single file
+npm run extract:lt                              # 0. labels and {address} tags to validate against
+# 1. create the spec, e.g. plans/extracted-audit/edits/I021.json (Write tool, whole file)
+npm run merge -- <spec.json> --dry-run          # 2. validate and preview (optional but cheap)
+npm run merge -- <spec.json>                    #    write notes/*.json and verify
+npm run extract:lt                              # 3. the extractor re-reads notes/: verify the output
 ```
 
-**What it supports:**
+The command exits non-zero on any error, so it can gate a script.
 
-| Operation | How it works |
-|-----------|-------------|
-| **Add** annotation | Write a new block note, part note, or inline comment in the `.asm` file → ingest adds it to JSON |
-| **Update** annotation | Edit existing text in the `.asm` file → ingest updates the JSON entry |
-| **Delete** annotation | Remove the text from the `.asm` file → ingest removes the JSON entry |
+**Spec format:** see [Merge spec format](#merge-spec-format-and-iteration-files) (`blockNote`, `partNotes`, `comments`; string or array = set, `null` or an empty string = remove; `"expect"` guard on comments; top-level keys starting with `_` or `$` ignored). Re-applying a full-text spec is safe and reports `=unchanged`. The `.asm` is only **read**, to validate the spec, so the result shows in `extracted/` after the next `extract` / `extract:lt`.
 
-**How deletion detection works:**
+**Partial edits (`merge` only):** to change part of an existing block or part note without pasting the whole text again, give an `edit` list instead of the text:
 
-Deletions are scoped to the files being processed — entries from unprocessed files are never touched.
-
-| Tier | Deletion condition |
-|------|-------------------|
-| **Block note** | File has `-----` structure but no `; ` lines before the first separator, and the file name has an entry in `blockNotes/bankNN.json` |
-| **Part note** | A label appears in the file without a preceding `; ` comment block, and the label has an entry in `partNotes/bankNN.json` |
-| **Comment** | A `; {address}` tag appears without text after it (extract:lt mode only), and the address has an entry in `comments/bankNN.json` |
-
-**The recommended workflow:**
-
-```
-1. npm run extract:lt          → Produce address-tagged .asm output
-2. Edit the .asm files         → Add/update/remove annotations directly
-3. npm run ingest              → Synchronize edits into notes/ JSON
-4. npm run extract             → Verify the final output
+```json
+"blockNote": { "edit": [
+  { "find": "8 bytes nothing reads", "with": "the two collision boxes" },
+  { "find": "=== SPRITES (", "until": "=== NOTES ===", "with": "=== SPRITES ===\n\nnew section\n\n" }
+] }
 ```
 
-**Detailed editing instructions:**
+`find` must occur exactly once in the stored note (otherwise the run aborts with the count); with `until`, everything from the start of `find` up to, but not including, the next `until` is replaced; `with` is a string or an array of lines. Edits apply in order. They need an existing note (a missing note is an error) and are not repeatable: once applied, `find` no longer matches, so re-running the spec reports an error instead of `=unchanged`. Use a full-text spec when the spec must stay re-applicable. Never write a helper script to rebuild note text: extend the spec instead.
 
-To **add or edit an inline comment**, find the `; {address}` tag on the target instruction and append your comment text after the address:
-```asm
-; Before (no comment):
-    SED                   ; {230620}
-; After (comment added):
-    SED                   ; {230620} BCD mode: jewelsCollected is packed decimal
+**Where each entry lands:**
+
+| Entry | File | Key |
+|-------|------|-----|
+| block note | `notes/blockNotes/bankNN.json` | file name without `.asm` (and without `.sprite`); bank from `?BANK` if present, else the block's start in `blocks.json` / `files.json`, else code labels, address tags, names lookup |
+| part note | `notes/partNotes/bankNN.json` | label; bank = the bank that already holds the label, otherwise the file's bank (a note is never duplicated into a second bank) |
+| comment | `notes/comments/bankNN.json` | decimal address; bank = address / 65536 |
+
+Key order and formatting (sorted keys, 4-space indent) are done by the save helper in `src/notes-common.ts`, and a file is rewritten only when its content changed.
+
+**Validation (all checked before any write; one error aborts everything):**
+
+- File must be an `.asm` under `extracted/`; `MenuSelectionHandler.asm` is refused (transforms artifact).
+- Part-note labels must exist exactly once in the file (near-misses print "Did you mean ..."). Top-level parts and indented sub-labels are both accepted.
+- Comment addresses must have exactly one `; {address}` tag; a file without tags tells you to run `extract:lt`. The `expect` guard must match the instruction on that line. Exception: a stored comment can be replaced or removed without a tag when `expectOld` matches its current text (see the spec format).
+- Comment text must be one line, must not contain `{digits}`, and warns when longer than 160 characters or when it matches a `db-us/transforms.json` pattern.
+- Two entries in one spec may not set the same key.
+- Warning: a part note whose label already lives in a different bank than the file resolves to is written to the existing bank.
+
+**After writing:** `merge` reloads `notes/` from disk and confirms every set is present with the exact text, every removal is gone, and no key exists in more than one bank file.
+
+**Rules of thumb:**
+
+- Run `extract:lt` first, and again whenever labels or addresses may have changed (renames, new names, notes merged by someone else). Specs are validated against the extracted `.asm`, so a stale extract rejects a renamed label.
+- `extracted/` is **stale after a merge** until the next extract. Do not copy text out of it into another spec without re-extracting.
+- `extract` and `extract:lt` begin by deleting `extracted/*`; nothing is lost because the notes live in `notes/`.
+- Keep the specs under `plans/extracted-audit/edits/` as the replayable record, one new file per iteration (see "Write new files" below).
+- Names (`db-us/names/bankNN.json`), `blocks.json`, `overrides.json`, `transforms.json` and code changes are outside its scope. Rename a label with [`npm run names`](#implemented-names-merge-npm-run-names) (it also moves the part-note key), re-run `extract:lt`, then merge any further notes for the new name.
+- **Transforms that match across labels (adjacency hazard).** A `transforms.json` regex that spans two labels (for example `diary_menu_window_dma`, which needs `diary_band_empty` and `diary_band_slot1` back to back) only matches while nothing sits between them. A part note or comment on either label puts a comment line between them, the regex stops matching, and the ROM bytes change (the rebuild CRC gate fails). Do not annotate between such labels; put the text in the block note. Prefer rules that match one label or one instruction sequence. After a merge run `npm run rebuild` and compare `artifacts/crc.json` with the baseline.
+
+**Availability:** implemented in `gaia-iog-baserom` (`src/merge.ts`). It imports shared helpers from `src/notes-common.ts` (bank detection, JSON load/save, spec types and note normalisation), so copy those two files and the `merge` case in `src/index.ts` to another baserom repo to use it there.
+
+### Merge spec format and iteration files
+
+**Spec format.** Keys are `.asm` paths relative to `extracted/` (a leading `extracted/` is also accepted). Each file takes any of three sections:
+
+```json
+{
+  "system/engine/smooth_follow.asm": {
+    "blockNote": ["First line.", "", "Second paragraph."],
+    "partNotes": {
+      "ComputeFollowStep": "Produces this frame's step.\n\nInputs: ...",
+      "OldHelper": null
+    },
+    "comments": {
+      "60956": "Y = slope row offset (orbitAngle x 32 bytes)",
+      "60960": { "text": "x32 via five ASL", "expect": "ASL" },
+      "60961": null
+    }
+  }
+}
 ```
 
-To **delete an inline comment**, remove the text after the `; {address}` tag (keep the tag itself):
-```asm
-; Before (has comment):
-    LDA $00B2             ; {39414} Check if VRAM DMA is pending
-; After (comment removed):
-    LDA $00B2             ; {39414}
+| Section | Key | Value |
+|---------|-----|-------|
+| `blockNote` | (none) | text, array of lines, or `null` |
+| `partNotes` | label name | text, array of lines, or `null` |
+| `comments` | decimal address (the `{n}` in `; {n}`, or the key of the stored comment) | text, `{ "text", "expect" }`, `{ "text", "expectOld" }`, or `null` |
+
+- **string or array** = set (add or replace). In note text, `\n` ends a line and an empty line becomes a `; ` paragraph break. An array is joined with `\n`.
+- **`null` or `""`** = remove. Removing something that is already absent is a no-op.
+- **`expect`** is an optional guard on comments: the instruction on that tagged line must contain the string (case-insensitive), otherwise the run fails. Use it whenever the address came from memory or an earlier pass.
+- **`expectOld`** replaces or removes a comment on a line that **already has a comment**. `extract:lt` prints no `; {address}` tag on such a line, so the line cannot be located in the `.asm`; instead the address is the key of the stored comment in `notes/comments/bankNN.json` and `expectOld` must be a substring (case-insensitive) of that stored text, otherwise the run fails. Find the key by searching `notes/comments/` for the old text (read-only). `expectOld` on a tagged (uncommented) line is an error, and `expect` is ignored (with a warning) on a commented line, because the instruction cannot be checked there. A comment that cannot be matched either way still fails with "address tag not found".
+- Keys starting with `_` or `$` at the top level are ignored (use `"_note"` for annotations in the spec).
+- Re-applying the same spec is safe: identical content reports `unchanged`.
+
+**Which labels work for `partNotes`.** Any label form the extractor emits: `Name {`, `Name [`, data parts (`Name #hex`, ``Name `text``, `Name ~text`, `Name |text`), and indented sub-labels (`  Name:`). Sub-label notes render above the sub-label with no separator. A label that appears more than once in a file is rejected as ambiguous.
+
+**Keep the specs.** Save each spec under the project (the IOG audit uses `plans/extracted-audit/edits/<iteration>.json`). They are a reviewable, replayable record of every annotation change, which hand edits and throwaway scripts never were.
+
+**Write new files; never append to or splice into a large file.** The merge tool changes `notes/` safely, but audit documentation (results, rename proposals, open questions) is a different matter: growing one long ledger with `StrReplace`, shell `cat >>` or `sed` is slow and error-prone and tempts an agent into one-off helper scripts. The audit therefore writes **one new file per iteration** with a single whole-file write:
+
+```
+plans/extracted-audit/
+  edits/I021.json              merge spec for iteration I021 (new file; corrections get a new spec, e.g. sanity-<topic>.json)
+  results/I021_results.md      verdicts, dispositions, gate result, suggested commit message (always written)
+  renames/I021_renames.md      rename proposals R-I021-1.. (only if any)
+  questions/I021_questions.md  unverified claims OQ-I021-1.. (only if any)
 ```
 
-To **add or edit a part note**, write `; ` comment lines immediately before the label:
-```asm
----------------------------------------------
-; Entry point for the per-frame combat collision system.
-;
-; Saves processor state and data bank.
+- IDs are scoped to the iteration (`OQ-I021-2`, `R-I021-1`) so no file needs to be read to pick the next number. Reference an older item by ID from a newer file; never edit the older file to close or amend it.
+- Progress is derived, not recorded: an iteration is done when its `results/` file exists, so no checklist tick or progress log is edited.
+- Ledgers from before this convention live in `*/I001-I020_*.md` and stay frozen; their numbering (OQ-1..OQ-69, rename rows 1..96) is cited from asm notes and remains valid.
+- A final consolidation pass reads all files in a folder and writes a new consolidated file.
 
-RunCombatCollision {
-```
+**When the tool is *not* the right choice:**
 
-To **delete a part note**, remove the `; ` comment lines before the label (leave the `-----` separator and the label intact):
-```asm
----------------------------------------------
+- Renames (`db-us/names/bankNN.json`, `blocks.json`), `overrides.json`, `transforms.json` and code changes are outside its scope.
+- For a constant value swap use `transforms.json`, not a comment or note.
+- Do not hand-edit the `.asm` expecting it to reach `notes/`: nothing reads the `.asm` back (the `ingest` and `annotate` commands were removed). Use `merge`.
+- Do not write a helper script for notes, comments or names. If `merge` or `names` lacks a feature, extend the tool in `src/` and document it here.
 
-RunCombatCollision {
-```
+**Rules of thumb:**
 
-To **add or edit a block note**, write `; ` comment lines at the very top of the file, before the first `-----` separator:
-```asm
-; Combat and interaction collision system (244613–247295, Bank 03).
-;
-; Implements all actor-vs-actor collision detection...
----------------------------------------------
-```
+- Work from a fresh `extract:lt`: comment addresses and labels come from that output. If you extracted with different notes since, re-extract before writing the spec.
+- `npm run extract` and `extract:lt` begin by deleting `extracted/*`. `merge` writes to `notes/`, so nothing is lost. Any hand edit to `extracted/*.asm` is lost at the next extraction.
+- Record the rebuild CRC baseline in the **same extraction mode** you gate with. In `gaia-iog-baserom`, `extract:lt` then `rebuild` and plain `extract` then `rebuild` currently produce different `totalSize` values (3062204 vs 3062189 at the time of writing), so comparing across modes looks like a regression when it is not one.
 
-To **delete a block note**, remove the `; ` lines at the top, leaving only the `-----` separator:
-```asm
----------------------------------------------
+### Bank detection
 
-?BANK 03
-```
+`merge` uses a 6-strategy fallback to determine which `bankNN.json` file an annotation belongs to. The first strategy that yields a bank wins:
 
-**Safety guarantees:**
+1. `?BANK` directive in the file. **Optional**: the extractor writes it only for non-movable blocks; the ~740 `movable` blocks and every `files.json` entry (sprite maps etc.) have none, so most files rely on strategies 2-6.
+2. **The block's start address in `db-us/blocks.json` / `db-us/files.json`** (bank = floor(start / 65536)). The lookup key is the file name without `.asm`, and without `.sprite` for sprite maps (`spm_x.sprite.asm` is block `spm_x` in `files.json`). A block with `parts` uses the lowest part start. This is the strategy that makes sprite files, route tables and pointer-only files (`scene_actors`) annotatable: look the block up in `blocks.json` (group -> block) or `files.json` (group -> scene -> name) and take `start / 65536`.
+3. `code_XXXXXX` / `loc_XXXXXX` labels (hex address encodes the bank)
+4. `; {address}` tags from extract:lt (bank = floor(address / 65536))
+5. File name lookup in `db-us/names/bankNN.json`
+6. First top-level label lookup in `db-us/names/bankNN.json`
 
-- **Idempotent**: Running ingest twice on unchanged files produces no changes and no spurious git diffs
-- **Scoped deletions**: Only entries visible in the processed file(s) can be deleted — other files' annotations are untouched
-- **Additions take precedence**: If a label has both an addition and a deletion candidate in the same batch, the addition wins
-- **No empty files**: The script never empties a JSON file — it only modifies individual entries
-- **Sorted output**: JSON keys are sorted (numerically for addresses, alphabetically for names) for consistent diffs
+Bank = floor(address / 65536) throughout, so a block at 819200 (`$0C8000`) is bank `0C` (`bank0C.json`); the ROM bank seen by the CPU is the extraction bank + `$80`. A block or part note that already exists keeps the file that holds it (a note is never duplicated into a second bank), so an old note filed under a different bank does not move by itself; to move one, null it in one spec (`"blockNote": null`, part notes `null`), merge, then merge the real text.
 
-**Bank detection:**
-
-The ingest script uses a 5-strategy fallback to determine which `bankNN.json` file an annotation belongs to:
-
-1. `?BANK` directive in the file
-2. `code_XXXXXX` / `loc_XXXXXX` labels (hex address encodes the bank)
-3. `; {address}` tags from extract:lt (bank = floor(address / 65536))
-4. File name lookup in `names.json`
-5. First top-level label lookup in `names.json`
+If `merge` still reports "cannot determine the ROM bank of this file", the file name is not a key in `blocks.json` / `files.json` (for example a renamed or removed block): fix the name, do not add a `?BANK` line to the extracted file (it is overwritten on the next extract).
 
 For inline comments, the bank is always determined directly from the decimal address (bank = floor(address / 65536)), regardless of the file's bank.
+
+### Implemented: Names Merge (`npm run names`)
+
+`names` is the **only way to add or rename a name**. It takes a JSON list of `{ address, old, new }` entries, writes `db-us/names/bankNN.json`, and carries each rename into every file that mentions the old label. It exists so that no agent ever writes a one-off script to edit name files, move part-note keys or search-and-replace labels.
+
+```bash
+cd <baserom-repo>
+npm run extract:lt                                # old labels are validated against extracted/
+# 1. create the spec, e.g. plans/extracted-audit/renames/apply-I065_names.json (Write tool, whole file)
+npm run names -- <spec.json> --dry-run            # 2. validate; lists every file that would change
+npm run names -- <spec.json>                      #    write names, notes, db files, docs
+npm run extract:lt && npm run rebuild             # 3. verify: output uses the new names, CRC gate unchanged
+npm run names -- --check                          # optional: names files sorted, correct bank, imported, no duplicates
+```
+
+**Spec format** (JSON array; the ROM location, old name and new name are the three required fields):
+
+```json
+[
+  { "address": 49863,  "old": "loc_00C2C7",  "new": "BossRewardFindScene", "row": "R-I051-3" },
+  { "address": 49875,  "old": "loc_00C2D3",  "new": "BossRewardCheckClaimed" },
+  { "address": 244008, "old": null,          "new": "SomeNewLabel", "note": "brand new label" }
+]
+```
+
+| Field | Meaning |
+|-------|---------|
+| `address` | A plain integer: the **`; {n}` line-tracking number of the part's first instruction** in the `extract:lt` output. That is also the key in the names files. A part starts where its first instruction does, so read the number off the first instruction line of the label you are naming or renaming. Bank = floor(address / 65536) picks `bankNN.json`. Data parts have no instructions and therefore no tag; for those, take the integer from the part's own address (an auto label such as `sprite_set_0E8000` carries it as a 6-digit hex suffix: 0x0E8000 = 950272). Write the integer, not hex; the tool warns when an auto label's suffix does not equal the address. |
+| `old` | The label the extracted `.asm` prints at that address **now**: the current names value, or the auto-generated label (`loc_00C2C7`, `code_03B922`, `sprite_set_0E8000`). `null` = brand-new name. The source is always the `.asm` files in `extracted/`; never look names up in `blocks.json` or `files.json` (they miss every auto-generated part). |
+| `new` | The new label. Must be a valid identifier and unused anywhere. |
+| `row`, `note` | Free text for the audit trail (rename row ID, reason). Ignored by the tool. Any other key is rejected. |
+
+**What each entry does:**
+
+| Situation | Result |
+|-----------|--------|
+| names has an entry at `address` | **rename**: `old` must equal it; the value is replaced |
+| no entry; `old` is an auto label defined in `extracted/` (or `null`) | **add**: entry created |
+| names already holds `new` at `address` | **unchanged**: re-applying a spec is safe |
+
+A block or part that has the **same name** in `blocks.json` / `files.json` needs no extra entry: the raw whole-word replacement below renames it there too. `blocks.json` / `files.json` are never consulted to classify an entry.
+
+**Validation (checked before any write; one error aborts everything):** identifiers are valid; no address, `old` or `new` repeats within the spec; `new` is not already used in names or as a label or `?INCLUDE` name in `extracted/` (unless that name is freed by another entry in the same spec); `old` matches what the address really holds; `extracted/` exists. A warning is printed when an auto label's hex suffix does not equal the address.
+
+**What gets rewritten** (whole-word replacement; a label is never matched inside a longer identifier):
+
+| Area | How |
+|------|-----|
+| `db-us/names/bankNN.json` | entry replaced or added; file sorted, 4-space indent. A missing bank file is created and imported in `src/names.ts`. |
+| `notes/{blockNotes,partNotes,comments}` | JSON is parsed: the part-note key (or block-note key) is renamed **within its bank**, and note text mentioning the label is rewritten. A rename that would collide with an existing note key is an error. |
+| `db-us/*.json` (blocks, files, transforms, overrides ...), `baserom/`, `docs/` | raw whole-word replacement |
+| `../gaia-core/docs`, `../IOGRXLT/IOGRetranslation/{modules,docs}` | raw whole-word replacement; skipped with `--local-only` |
+| **Not touched** | `extracted/` (regenerate it), `plans/`, `temp/`, `artifacts/`, `db-jp/`, `rebuilt/`, `archived/`, and the gaia-knowledge corpus copies (refresh them with `npm run ingest:all` there) |
+
+**Flags:** `--dry-run` (report only), `--local-only` (skip the two external roots), `--check` (no spec; validates the names files themselves).
+
+**Rules of thumb:**
+
+- Run `extract:lt` first and again afterwards. The extracted `.asm` is the source of both `old` and `address`; it is also read to prove that `old` really is what the extractor prints.
+- Keep each spec under `plans/extracted-audit/renames/apply-<range>_names.json` as the replayable record, and write a new file per iteration.
+- A rename changes labels only, never ROM bytes: `npm run rebuild` must still match the CRC gate in `artifacts/crc.json`.
+- Renaming moves the part-note key; do not also null and re-merge the note. Notes about the new name that are *new* go through `npm run merge` afterwards.
+- Sub-labels (`Parent:` colon labels) have their own names entry and need their own spec entry.
+- **Part label shadowing a names entry:** when a `blocks.json` part sits on the same address as a `names/bankNN.json` entry with a different name, the extraction prints the part name while references may use the names entry. Put the label the `.asm` prints in `old`: the tool then rewrites the names entry and both old names (the part key in `blocks.json` is replaced by the same whole-word rewrite).
+- **Block patches are matched by file name:** a block patch file (for example `baserom/equipped-icon/<block>.asm`) must be renamed by hand to the new block name after a block rename; the tool rewrites its content but cannot move the file.
+- **Derived `_value` labels:** the `Extract(n)` post-process of `scene_actors` cuts the title out of each record and names it `<record label>_value` (and the copied pointer table `<table>_extract_table`). These labels have no address of their own, so they cannot be named; they follow their record. Renaming a record label `R` to `S` therefore also rewrites every reference to `R_value` into `S_value` (notes keys, db files, patches, docs and modules), and the extractor emits the new name.
+- **Limitation:** it cannot delete a names entry or turn a name back into an auto label. That is a deliberate manual change; ask the user.
+
+**Availability:** implemented in `gaia-iog-baserom` (`src/names-merge.ts`, shared helpers in `src/notes-common.ts`, wired as the `names` case in `src/index.ts`). It does not depend on engine internals. Robotrek uses a single `names.json`, so it would need the bank-file logic replaced there.
 
 ### Future Improvement: Block Audit Report (`audit:blocks`)
 
@@ -1296,11 +1489,11 @@ Block: combat_collision (bank03)
   Block note: ✗ missing
   Part notes: 3/12 routines covered
   Comments:   0 comments across 892 instructions
-  Names:      4 generic labels (code_03A1B0, code_03A2F4, code_03A380, code_03A4C2)
+  Names:      4 generic labels (code_03A1B0, WorldMapControllerEntry, code_03A380, code_03A4C2)
   Coverage:   ░░░░░░░░░░ 0% — needs full documentation pass
 ```
 
-This would combine `names.json` scanning (flag generic labels), part note coverage (which named routines lack notes), comment density (instructions per comment ratio), and block note presence into a single actionable report.
+This would combine `db-us/names/` scanning (flag generic labels), part note coverage (which named routines lack notes), comment density (instructions per comment ratio), and block note presence into a single actionable report.
 
 ### Future Improvement: Part Note Templates
 
@@ -1362,13 +1555,13 @@ When auditing existing comments, run `extract:lt` and check that each comment ap
 
 ### Working efficiently with large JSON files
 
-> **Note:** With the ingest script, agents should rarely need to edit JSON files directly. Edit `.asm` files and run `npm run ingest` instead. This section is retained for manual inspection and debugging.
+> **Note:** With `merge`, agents should rarely need to edit JSON files directly. Write a spec and run `npm run merge` instead. This section is retained for manual inspection and debugging.
 
 Comment files can have hundreds of entries. For agents inspecting these files:
 
 1. **Search, don't scan.** Use grep/search to find entries by address range (e.g., `"435"` to find all addresses in the 43500–43599 range).
 2. **Read targeted ranges.** Use line-offset reads around the addresses you need to inspect, not full file reads.
-3. **Prefer the ingest workflow.** If you need to add, update, or delete entries, edit the `.asm` file and run `npm run ingest` rather than modifying JSON directly. The ingest script handles key ordering, bank detection, and merge/delete logic automatically.
+3. **Prefer the merge workflow.** If you need to add or update entries, write a spec and run `npm run merge` rather than modifying JSON directly; it handles key ordering and bank detection (the bank comes from `?BANK` if present, otherwise from the block's start address in `blocks.json` / `files.json`; see "Bank detection"). `merge` cannot remove a note whose label no longer exists: that needs a careful hand edit of the one JSON entry, followed by `extract:lt` to verify.
 
 ---
 
@@ -1382,7 +1575,7 @@ Before modifying any files, read the target `.asm` file completely and create a 
 
 1. **Block note accuracy** — handler/routine count, descriptions match file contents
 2. **Missing or inaccurate part notes** — list by routine name
-3. **Name auditing** — generic or misleading labels in `names.json`
+3. **Name auditing** — generic or misleading labels in `db-us/names/bankNN.json`
 4. **Existing comments to correct** — misplaced, inaccurate, or redundant
 5. **New comments to add** — identify which routines need them and at what density
 6. **Verification** — plan the final extraction and review
@@ -1394,21 +1587,21 @@ This prevents the common failure mode of starting to write comments mid-read and
 The typical audit requires at minimum two extraction runs (standard → `extract:lt`), plus a final verification. To minimize round-trips:
 
 1. **First read:** Read the standard-extracted `.asm` file (already available in `extracted/`). No extraction needed if it's up to date.
-2. **Run `extract:lt`:** This provides addresses for comment work and shows existing annotations. Edit the file directly — add block notes, part notes, and inline comments.
-3. **Run `npm run ingest`:** Synchronize all edits into `notes/` JSON files. This handles additions, updates, and deletions automatically.
-4. **Run standard `extract`:** Final verification that everything appears correctly.
+2. **Run `extract:lt`:** This provides addresses for comment work and shows existing annotations. Write one spec covering every file in the batch (it accepts many files at once) — block notes, part notes, and inline comments.
+3. **Run `npm run merge -- <spec.json> --dry-run`, then for real:** it validates against the extracted `.asm`, writes the entries into `notes/` JSON, and verifies them. Fix any reported error and re-run; nothing is written while errors exist.
+4. **Run `extract:lt` (or standard `extract`) again:** the extractor re-reads `notes/`, so this is the final verification that everything appears correctly.
 
 If the file hasn't changed since the last extraction, skip the extraction — just read the existing file.
 
 ### Navigating the JSON files
 
-> **Note:** With the ingest script (`npm run ingest`), agents no longer need to manually edit JSON files. Edit the `.asm` files directly and run `ingest`. This section is retained for understanding the file structure and for manual inspection/debugging.
+> **Note:** With `npm run merge`, agents no longer need to manually edit JSON files. Write a spec and run `merge`. This section is retained for understanding the file structure and for manual inspection/debugging.
 
 The note and comment JSON files are organized by bank. To find the right file and position:
 
 1. **Bank file:** Comments for addresses 32768–65535 → `bank00.json`, 163840–196607 → `bank02.json`, etc.
 2. **Finding insertion point:** Search for the nearest existing address key. Comments must be in ascending address order.
-3. **Cross-referencing names:** Search `names.json` for the routine address (decimal key) to get the label. Search `partNotes/bankNN.json` for that label to check for an existing part note.
+3. **Cross-referencing names:** Search `db-us/names/bankNN.json` (bank = floor(address / 65536)) for the routine address (decimal key) to get the label. Search `partNotes/bankNN.json` for that label to check for an existing part note.
 
 ### Handling multi-block files
 
@@ -1421,7 +1614,7 @@ When auditing such files:
 
 ### Comment authoring tips for agents
 
-1. **Edit `.asm` files, not JSON.** Use `npm run extract:lt` to get address-tagged output, edit the `.asm` file directly, then run `npm run ingest`. Never manually edit `notes/` JSON files.
+1. **Use `npm run merge`, not hand edits or throwaway scripts.** Run `npm run extract:lt` for address-tagged output, write a JSON spec (block note, part notes by label, comments by address, `null` to remove), run `npm run merge -- <spec.json>`, then `npm run extract:lt` to check the result. Never manually edit `notes/` JSON files, and do not write one-off scripts that rewrite `.asm` text.
 2. **One comment per logical operation.** Don't comment every instruction — aggregate sequences into a single explanation at the first meaningful instruction.
 3. **Avoid restating the instruction.** `PHX ; Save X` adds no value. Instead, explain *why* X is being saved: `PHX ; Preserve actor index across flag lookup`.
 4. **Document non-obvious values.** Magic numbers, bitmask meanings, hardware register purposes, and sentinel return values always need comments.
@@ -1441,17 +1634,17 @@ Many engines have families of near-identical wrapper routines (e.g., `SetFlag_01
 
 The following would significantly reduce the time and context required for documentation work:
 
-**1. ~~Inline comment ingestion~~ ✅ IMPLEMENTED** — The `npm run ingest` command lets agents write all annotations (block notes, part notes, and inline comments) directly in the extracted `.asm` files, then synchronize them to JSON. Supports additions, updates, and deletions. See [Notes Ingestion Script](#implemented-notes-ingestion-script-npm-run-ingest).
+**1. ~~Inline comment ingestion~~ ✅ IMPLEMENTED (superseded by `merge`)** — `npm run merge` lets agents write all annotations (block notes, part notes, and inline comments) from a JSON spec straight into `notes/`. See [Notes Merge](#implemented-notes-merge-npm-run-merge).
 
-**2. Coverage audit report** — A single command (`npm run audit:coverage`) that reports which blocks have block notes, which routines have part notes, which routines have inline comments, and which `names.json` labels are still generic. This would let agents instantly identify what needs attention without manually scanning multiple JSON files.
+**2. Coverage audit report** — A single command (`npm run audit:coverage`) that reports which blocks have block notes, which routines have part notes, which routines have inline comments, and which `db-us/names/` labels are still generic. This would let agents instantly identify what needs attention without manually scanning multiple JSON files.
 
-**3. Name audit report** — A tool that scans `names.json` for generic labels (`code_XXXXXX`, `sub_XXXXXX`, `loc_XXXXXX` at part boundaries) and reports them as candidates for renaming.
+**3. Name audit report** — A tool that scans `db-us/names/` for generic labels (`code_XXXXXX`, `sub_XXXXXX`, `loc_XXXXXX` at part boundaries) and reports them as candidates for renaming.
 
 **4. Part note scaffolding** — A tool that generates template part notes for all named routines that lack them, using pattern detection (COP handler → COP handler template, 5-instruction JSL wrapper → wrapper template, data table → table template). Agents could then review and refine rather than writing from scratch.
 
-**5. Validation on extract** — Run basic validation during `npm run extract` that warns about orphaned part notes (keys not matching any `names.json` value), missing part notes for named routines, and comment addresses that don't match any instruction. Currently agents discover these issues only through manual verification.
+**5. Validation on extract** — Run basic validation during `npm run extract` that warns about orphaned part notes (keys not matching any names value), missing part notes for named routines, and comment addresses that don't match any instruction. Currently agents discover these issues only through manual verification.
 
-**6. Reduced context requirements** — The current workflow requires holding the entire `.asm` file, three JSON files, and `names.json` in context simultaneously. A focused audit view that shows one routine at a time with its part note, comments, and `names.json` entry would let agents work routine-by-routine instead of file-by-file.
+**6. Reduced context requirements** — The current workflow requires holding the entire `.asm` file, three JSON files, and the names files in context simultaneously. A focused audit view that shows one routine at a time with its part note, comments, and names entry would let agents work routine-by-routine instead of file-by-file.
 
 ### Checklist: Annotating a New Block
 
@@ -1461,11 +1654,11 @@ Quick reference for the complete annotation workflow:
 - [ ] Identify all routines and their relationships
 - [ ] Count every named routine — verify any existing block note count is accurate
 - [ ] Determine the bank number (floor(start_address / 65536)) — all notes go in `bankNN.json` files
-- [ ] Audit `names.json`: rename generic labels (`code_XXXXXX`), fix misleading names
+- [ ] Audit `db-us/names/bankNN.json`: rename generic labels (`code_XXXXXX`), fix misleading names
 - [ ] Run `npm run extract:lt` to get address-tagged output
-- [ ] Edit the `.asm` file directly: add block note at top, part notes before labels, inline comments after `; {address}` tags
-- [ ] Run `npm run ingest` to synchronize edits into `notes/` JSON files
-- [ ] Run `npm run extract` (standard) and review the final output
+- [ ] Write an edit spec JSON: block note, part notes (by label), inline comments (by `{address}`, with `expect` guards)
+- [ ] Run `npm run merge -- <spec.json> --dry-run`, fix any errors, then run it without `--dry-run` (it writes and verifies `notes/` JSON)
+- [ ] Run `npm run extract:lt` (or standard `npm run extract`) and review the final output
 - [ ] Read the file top-to-bottom as a consumer — does it flow? Are the comments helpful without being noisy?
 
 ### Checklist: Auditing an Existing Block
@@ -1475,12 +1668,11 @@ Quick reference for verifying and improving existing annotations:
 - [ ] Run `npm run extract` and read the entire `.asm` file end-to-end
 - [ ] Verify block note: correct handler/routine count, descriptions match file contents, no references to routines in other files
 - [ ] For each named routine: verify part note exists and accurately describes the code
-- [ ] Audit `names.json` labels: descriptive, follows naming conventions, matches part note keys
+- [ ] Audit `db-us/names/bankNN.json` labels: descriptive, follows naming conventions, matches part note keys
 - [ ] Run `npm run extract:lt` to get address-tagged output
 - [ ] For each existing comment: verify address matches the correct instruction, description is accurate (not misplaced or misleading), and adds value (not just restating the instruction)
-- [ ] Edit the `.asm` file: remove redundant comments, add missing ones, update inaccurate ones
 - [ ] Look for `; {address}` tags in complex routines — these are uncommented lines that may need annotation
-- [ ] Add missing comments following density guidelines (high density for complex logic, low for trivial handlers)
-- [ ] Run `npm run ingest` to synchronize all edits into `notes/` JSON files
-- [ ] Run `npm run extract` (standard) and verify the final output reads naturally
+- [ ] Write an edit spec: `null` for redundant comments/notes, new text for missing or inaccurate ones (density guidelines: high for complex logic, low for trivial handlers)
+- [ ] Run `npm run merge -- <spec.json> --dry-run`, then for real (it writes and verifies `notes/` JSON)
+- [ ] Run `npm run extract:lt` (or standard `npm run extract`) and verify the final output reads naturally
 - [ ] Read the file as a consumer — do annotations flow? Are they accurate and non-redundant?

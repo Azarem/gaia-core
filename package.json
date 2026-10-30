@@ -1,6 +1,6 @@
 {
   "name": "@gaialabs/core",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "GaiaLabs TypeScript Core Library - Universal ROM processing engine",
   "funding": "https://github.com/sponsors/Azarem",
   "type": "module",

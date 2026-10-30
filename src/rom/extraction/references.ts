@@ -15,11 +15,26 @@ export class ReferenceManager {
   public readonly fileTable = new Map<number, string>();
   private readonly root: DbRoot;
 
-  constructor(root: DbRoot) {
+  /**
+   * Prepended to every auto-generated name (`{type}_{loc}`, `loc_{loc}`, `code_{loc}`).
+   * Empty for the shared, ROM-wide manager. Isolated managers (compressed struct files whose locations
+   * are 0-oriented to the file) use `{fileName}_` so generated names are unique across files.
+   */
+  public readonly namePrefix: string;
+
+  constructor(root: DbRoot, namePrefix: string = '') {
     if (!root) {
       throw new Error('root cannot be null');
     }
     this.root = root;
+    this.namePrefix = namePrefix;
+  }
+
+  /**
+   * Applies the manager's generated-name prefix. Only for generated names, never for user-supplied ones.
+   */
+  public prefixName(generatedName: string): string {
+    return this.namePrefix + generatedName;
   }
 
   // Struct management
@@ -84,7 +99,7 @@ export class ReferenceManager {
   public createBranchLabel(location: number): string {
     // const adrs = Address.fromInt(location, this.root.config.memoryMode);
     // const name = `loc_${adrs.toString()}`;
-    const name = `loc_${location.toString(16).toUpperCase().padStart(6, '0')}`;
+    const name = this.prefixName(`loc_${location.toString(16).toUpperCase().padStart(6, '0')}`);
     this.nameTable.set(location, name);
     return name;
   }
@@ -105,7 +120,21 @@ export class ReferenceManager {
 
     //const adrs = Address.fromInt(location, this.root.config.memoryMode);
     //return `${name}_${adrs.toString()}`;
-    return `${name}_${location.toString(16).toUpperCase().padStart(6, '0')}`;
+    return this.prefixName(`${name}_${location.toString(16).toUpperCase().padStart(6, '0')}`);
+  }
+
+  /**
+   * Name for an instruction-level label that has no entry in the name table (`code_{loc}`).
+   */
+  public createCodeLabel(location: number): string {
+    return this.prefixName(`code_${location.toString(16).toUpperCase().padStart(6, '0')}`);
+  }
+
+  /**
+   * Name for a table entry that has no entry in the name table (`loc_{loc}`). Not registered.
+   */
+  public createLocationFallbackName(location: number): string {
+    return this.prefixName(`loc_${location.toString(16).toUpperCase().padStart(6, '0')}`);
   }
 
   public createFallbackName(location: number): string {

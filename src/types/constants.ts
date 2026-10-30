@@ -14,7 +14,7 @@ export type PatchOverrideKind = 'replace' | 'before' | 'after' | 'head' | 'tail'
 
 /** A parsed patch override directive (see RomProcessingConstants.parseOverride) */
 export interface PatchOverride {
-  /** Target label with the directive suffix removed */
+  /** Target part name with the directive suffix and any cosmetic `block.` prefix removed */
   name: string;
   kind: PatchOverrideKind;
   /** Byte offset into the target block (only meaningful for `bytes`; 0 otherwise) */
@@ -116,6 +116,11 @@ export class RomProcessingConstants {
    * `Label.replace`, `Label.before`, `Label.after`, `Label.prepend`, `Label.append`,
    * `Label.at` / `Label.at(1F)`
    *
+   * Any form may be prefixed with the owning file/block name and a period for readability
+   * (`dm44_cell_door.code_05D54B-=`, `dm44_cell_door.code_05D54B.append`). The prefix is purely
+   * cosmetic: it is removed from the returned `name` and never validated. Only override labels
+   * are affected; plain labels keep their full text.
+   *
    * @returns The parsed override, or null when the label is a plain label
    */
   public static parseOverride(label: string | undefined | null): PatchOverride | null {
@@ -127,14 +132,14 @@ export class RomProcessingConstants {
       const kind = OVERRIDE_VERBS[verb[2].toLowerCase()];
       const hex = verb[3];
       if (hex !== undefined && kind !== 'bytes') return null; // Only `.at` takes an argument
-      return { name: verb[1], kind, offset: hex ? parseInt(hex, 16) : 0 };
+      return { name: RomProcessingConstants.stripBlockPrefix(verb[1]), kind, offset: hex ? parseInt(hex, 16) : 0 };
     }
 
     // Symbol forms - compound (`+=`, `-=`) before single character
     const suffix = label.endsWith('=') ? label.slice(-2) : label[label.length - 1];
     const symbolKind = OVERRIDE_SYMBOLS[suffix];
     if (symbolKind && label.length > suffix.length) {
-      return { name: label.slice(0, -suffix.length), kind: symbolKind, offset: 0 };
+      return { name: RomProcessingConstants.stripBlockPrefix(label.slice(0, -suffix.length)), kind: symbolKind, offset: 0 };
     }
 
     // Byte replacement: `Label#` / `Label#1F`
@@ -142,11 +147,22 @@ export class RomProcessingConstants {
     if (hashIx > 0) {
       const hex = label.substring(hashIx + 1);
       if (/^[0-9a-f]*$/i.test(hex)) {
-        return { name: label.substring(0, hashIx), kind: 'bytes', offset: hex.length ? parseInt(hex, 16) : 0 };
+        return { name: RomProcessingConstants.stripBlockPrefix(label.substring(0, hashIx)), kind: 'bytes', offset: hex.length ? parseInt(hex, 16) : 0 };
       }
     }
 
     return null;
+  }
+
+  /**
+   * Removes a cosmetic `block.` prefix from an override target (`dm44_cell_door.code_05D54B` -> `code_05D54B`).
+   * Part names never contain a period, so everything up to the first `.` is the prefix (the same rule
+   * the writer applies to `block.part` reference operands). A name with no period, or a period at
+   * either end, is returned unchanged.
+   */
+  public static stripBlockPrefix(name: string): string {
+    const ix = name.indexOf('.');
+    return ix > 0 && ix < name.length - 1 ? name.substring(ix + 1) : name;
   }
 
   public static stripMarkers(name: string): { raw: string, name: string, isSoft: boolean, isRaw: boolean } {

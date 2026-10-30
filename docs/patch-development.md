@@ -348,7 +348,7 @@ thinker_spawn_0CEB2F [
 thinker_spawn_0CEB2F+= [
   thinker-spawn < #74, @ambient_palette_cycler >
   thinker-spawn < #00, @ending_comet_dma_setup >
-  thinker-spawn < #24, @parallax_thinker >
+  thinker-spawn < #24, @scanline_band_hdma_thinker >
 ]
 
 ; Result after merge:
@@ -356,7 +356,7 @@ thinker_spawn_0CEB2F [
   thinker-spawn < #00, @some_thinker >
   thinker-spawn < #74, @ambient_palette_cycler >
   thinker-spawn < #00, @ending_comet_dma_setup >
-  thinker-spawn < #24, @parallax_thinker >
+  thinker-spawn < #24, @scanline_band_hdma_thinker >
 ]
 ```
 
@@ -687,10 +687,10 @@ UseItemTab {                      ; ← AsmBlock 1: "UseItemTab"
     LDA #$0004
     STA $bg1ConfigMode
     ; ...setup code...
-    BPL code_02E47F
+    BPL UseItemRefreshCursor
     STZ $1A
 
-  code_02E47F:                    ; ← AsmBlock 2: "code_02E47F"
+  UseItemRefreshCursor:                    ; ← AsmBlock 2: "UseItemRefreshCursor"
     JSR $&PositionEquipCursor
     COP [SetEntryHereAndYield]
     COP [BranchIfPressed] ( #$0080, &UseItemConfirm )
@@ -703,11 +703,11 @@ UseItemTab {                      ; ← AsmBlock 1: "UseItemTab"
 `Label!` replaces **exactly one `AsmBlock`** — the one matching that label name. Internal colon labels (sub-labels) are separate blocks that **persist unchanged** after the override:
 
 ```
-Original parts list:  [UseItemTab] [code_02E47F] [UseItemCursorUp] ...
+Original parts list:  [UseItemTab] [UseItemRefreshCursor] [UseItemCursorUp] ...
 
 Override: UseItemTab! { ...new code... }
 
-Result parts list:    [UseItemTab*] [code_02E47F] [UseItemCursorUp] ...
+Result parts list:    [UseItemTab*] [UseItemRefreshCursor] [UseItemCursorUp] ...
                        ↑ replaced    ↑ UNCHANGED   ↑ UNCHANGED
 ```
 
@@ -776,9 +776,9 @@ Since `DiaryStartSlotLoop` has no sub-labels of its own, this is a clean replace
 
 ```asm
 JSL $@system_init.UploadCgramPalette  ; 3-byte far call (cross-bank)
-JSR $&RenderScrollRow                  ; 2-byte short call (same bank)
+JSR $&RenderColumnStrip                  ; 2-byte short call (same bank)
 JSR $&BlankScrollColumn                ; 2-byte short call (same bank)
-JSR $&DmaHorizontalStrip               ; 2-byte short call (same bank)
+JSR $&DmaColumnStrip               ; 2-byte short call (same bank)
 ```
 
 `$@` for cross-bank calls, `$&` for same-bank calls. The `system_init.` prefix is documentation only — the engine looks up `UPLOADCGRAMPALETTE` in the global label table.
@@ -1086,6 +1086,28 @@ With transforms, the regex operates on the extracted text **before** assembly. S
 
 Transforms and overrides are complementary: transforms handle the base extracted code, overrides handle targeted structural changes. If a label is both transformed AND overridden, the override wins (it replaces the block entirely — the transformed text is never used for that label).
 
+### Unapplied Transform Warnings
+
+A transform that silently does nothing is easy to miss (a renamed block, a new inline comment, a changed label). At the end of every extraction (`extractAllContent`) and `RomGenerator.generateProject`, the engine prints a single grouped warning listing every transform that was not applied:
+
+```
+transforms.json: 11 transform(s) were not applied
+
+  Block not found in blocks.json (8 block(s)): rename the key in transforms.json to match
+    - fr33_kara (1 transform(s) skipped)
+
+  Regex matched nothing (3):
+    - cop_handlers_audio #1: (?<!STA \$02\s+)LDA \$0A\s+...
+```
+
+| Warning | Cause | Fix |
+|---------|-------|-----|
+| **Block not found** | The key in `transforms.json` has no matching block name in `blocks.json` (renamed, split or removed block). Every transform under that key is skipped. | Rename the key to the current block name, or delete the entry. |
+| **Regex matched nothing** | The regex is valid but found no text in the block's generated `.asm`. `#N` is the 1-based position in the block's list. | Compare the regex against the extracted file. Common causes: renamed labels, notes/inline comments, and line-tracking tags (`; {n}`) in the text. Use `[^\\r\\n]*` to skip trailing comments. |
+| **Invalid regex** | The `key` is not a valid JavaScript regex (the message includes the syntax error). | Fix the pattern; remember JSON needs `\\` for each regex `\`. |
+
+No output means every transform was applied. Programmatic access: `BlockWriter.getTransformWarnings()` returns the list as `TransformWarning[]` (`src/types/transforms.ts`); `formatTransformWarnings()` / `reportTransformWarnings()` (`src/rom/extraction/transform-warnings.ts`) build and print the report. A "matched nothing" warning is per extraction run, so if a transform is only valid in `extract` and not `extract:lt` (or vice versa), you will see it in one mode only.
+
 ---
 
 ## Engine Source Reference
@@ -1118,23 +1140,23 @@ Mistakes that have caused real debugging sessions during patch development. Read
 
 **Example:**
 ```asm
-; Original layout: code_02E47F is ~40 bytes from UseItemCursorUp
-; UseItemCursorUp's BRA code_02E47F works fine
+; Original layout: UseItemRefreshCursor is ~40 bytes from UseItemCursorUp
+; UseItemCursorUp's BRA UseItemRefreshCursor works fine
 
-; Patch inserts 3 new blocks after code_02E47F! override:
-code_02E47F! { ... }
+; Patch inserts 3 new blocks after UseItemRefreshCursor! override:
+UseItemRefreshCursor! { ... }
 UseItemReorderStart { ...80 bytes... }
 UseItemReorderConfirm { ...80 bytes... }
 UseItemReorderCancel { ...80 bytes... }
 
-; UseItemCursorUp is now ~280 bytes from code_02E47F → BRA out of range!
+; UseItemCursorUp is now ~280 bytes from UseItemRefreshCursor → BRA out of range!
 ```
 
 **Fix:** Override the affected labels to use `JMP $&target` instead of `BRA target`:
 
 ```asm
-UseItemCursorUp! { JMP $&code_02E47F }
-UseItemCursorDown! { JMP $&code_02E47F }
+UseItemCursorUp! { JMP $&UseItemRefreshCursor }
+UseItemCursorDown! { JMP $&UseItemRefreshCursor }
 ```
 
 **Prevention:** After adding chained inserts, check the next 5-10 labels below the insertion point for `BRA` instructions that branch upward.

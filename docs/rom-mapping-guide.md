@@ -217,6 +217,8 @@ Start with the interrupt vectors and any known entry points:
 
 > **Note:** All addresses in `names.json` (and `blocks.json`, `overrides.json`, `types.json`) are **decimal ROM file offsets**, not SNES addresses. For a HiROM game: ROM offset = SNES address − $C00000 (for bank $C0+) or = SNES address − $800000 (for bank $80+, mirrored).
 
+> **Splitting by bank (optional):** The engine only needs one merged `names` dictionary (`DbGameRomModule.names`). Larger projects split the file per ROM bank — `names/bankNN.json`, bank = floor(address / 65536) — and merge the files in the module with static imports (the Illusion of Gaia baserom does this in `src/names.ts`; see `gaia-core/docs/notes-and-comments.md` §"Names").
+
 ### 1.5 Start with empty JSON files
 
 ```json
@@ -652,7 +654,7 @@ Parts can have an `order` field to control their position in extracted output, i
   "parts": {
     "sFA_diary_menu": { "start": 778807, "end": 778956, "type": "actor-def" },
     "dialogstring_0BF3F4": { "start": 783348, "end": 783931, "order": 784046, "type": "DialogString" },
-    "table_0BF63B": { "start": 783931, "end": 783975, "order": 784047, "type": "&DialogString" }
+    "diary_button_legend_table": { "start": 783931, "end": 783975, "order": 784047, "type": "&DialogString" }
   }
 }
 ```
@@ -786,6 +788,7 @@ Use the Mesen2 MCP tools for runtime validation:
 3. `set_breakpoints` — Break on specific addresses to verify execution flow
 4. `read_memory` — Check RAM state at runtime
 5. `take_screenshot` — Visual verification of scenes
+6. `load_rom {paused: true}` or `run_script {fromReset: "power"}` (server 0.6.0 or later) — Start at the first boot instruction, to observe boot code (hardware register init, first `NMITIMEN` write). A plain `load_rom` resumes at once and misses about the first 97 frames. `reset {mode: "soft" | "power"}` resets the console and stops at the reset vector (soft keeps WRAM, power re-initializes it)
 
 ---
 
@@ -1642,7 +1645,7 @@ extracted/system/
 extracted/actors/
 ├── town_door.asm             # Used by many scenes
 ├── hidden_red_jewel.asm      # Generic collectible
-└── floor_button.asm          # Pressure plate actor
+└── hit_switch.asm          # Hit-triggered switch actor
 ```
 
 ### 9.5 The scene property
@@ -2048,7 +2051,7 @@ Every extracted `.asm` file should have documentation comments following the sta
 ; Per-frame proximity check: branches to interact loop when player is 
 ; within range, otherwise returns to wait for next frame.
 TownDoorProximityCheck:
-    COP [BranchIfPlayerNear] ( #01, &TownDoorInteractLoop )
+    COP [BranchIfPlayerNear] ( #01, &TownDoorHoldUpLoop )
     RTL 
 ```
 

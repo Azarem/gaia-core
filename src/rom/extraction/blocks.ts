@@ -184,10 +184,8 @@ export class BlockReader {
       //if(foundBlock.parts?.length === 1 && foundBlock.location === loc) return;
       this._currentAsmBlock!.includes!.add({block: foundBlock, part: foundPart});
     } else if (isBranch && !this._referenceManager.tryGetName(adjLoc).found) {
-      // const adrs = Address.fromInt(loc, this._root.config.memoryMode);
-      // const name = `loc_${adrs.toString()}`;
-      const name = `loc_${adjLoc.toString(16).toUpperCase().padStart(6, '0')}`;
-      this._referenceManager.tryAddName(adjLoc, name);
+      // Not found in the name table (checked above), so this is a plain registration of `{prefix}loc_{adjLoc}`
+      this._referenceManager.createBranchLabel(adjLoc);
     }
   }
 
@@ -487,7 +485,10 @@ export class BlockReader {
       const asmBlock = new AsmBlock(chunkFile, 0, chunkFile.size, chunkFile.name, chunkFile.struct);
       chunkFile.parts = [asmBlock];
       this._currentAsmBlock = asmBlock;
-      this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root);
+      // Locations in this pass are 0-oriented to the file, so generated names would collide across files.
+      // Prefix them with the file name; the root part (location 0) keeps the bare file name.
+      this._referenceManager = chunkFile.referenceManager = new ReferenceManager(this._root, `${chunkFile.name}_`);
+      this._referenceManager.tryAddName(asmBlock.location, chunkFile.name);
       this._romDataReader = new RomDataReader(chunkFile.rawData!, chunkFile.base);
       this._typeParser = new TypeParser(this);
       this.processPart(asmBlock);

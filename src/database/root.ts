@@ -13,6 +13,7 @@ import { DbTransform } from './transforms';
 import { OpCode } from './opcode';
 import { MemoryMapMode } from '../types/addressing';
 import { ChunkFile } from '../types/files';
+import type { TransformWarning } from '../types/transforms';
 import { DbScene } from './scenes';
 import { DbGroup } from './groups';
 import { CompressionAlgorithms } from '../compression';
@@ -62,6 +63,8 @@ export interface DbRoot {
   blockNotes: Record<string, string>;
   partNotes: Record<string, string>;
   types: Record<number, string>;
+  /** `transforms.json` blocks that do not exist in `blocks.json` (found at load time). */
+  transformWarnings: TransformWarning[];
 }
 
 /**
@@ -164,6 +167,11 @@ export class DbRootUtils {
         blocksArray.push(block);
       }
     }
+
+    const blockNames = new Set(blocksArray.map(b => b.name));
+    const transformWarnings: TransformWarning[] = Object.entries(module.transforms ?? {})
+      .filter(([blockName, list]) => !blockNames.has(blockName) && list?.length > 0)
+      .map(([blockName, list]) => ({ kind: 'block-not-found', block: blockName, count: list.length }));
 
     const sceneLookup = {} as Record<number, DbScene>;
     const groupLookup = Object.entries(module.groups).reduce((acc, x) => {
@@ -312,7 +320,8 @@ export class DbRootUtils {
       comments: module.comments ?? {},
       blockNotes: module.blockNotes ?? {},
       partNotes: module.partNotes ?? {},
-      types: typeLookup
+      types: typeLookup,
+      transformWarnings
     };
 
     return root;
@@ -385,6 +394,8 @@ export class DbRootUtils {
         await saveFileAsBinary(filePath, block.rawData);
       }
     }
+
+    writer.reportTransformWarnings();
   }
 
   public static async rebuildAllContent(root: DbRoot, inPath: string[], outPath: string) 
