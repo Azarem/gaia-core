@@ -435,6 +435,8 @@ npm run names -- --check
 
 It prints `Names check: OK (<n> names)` or lists each problem and exits non-zero. Never write a script for this.
 
+Line endings: a bank file may be pure LF or pure CRLF (a Windows checkout with `core.autocrlf` turns the committed LF into CRLF); both pass the format check, a file that mixes the two does not. `npm run names` keeps the ending the bank file already has when it rewrites it, and a new bank file gets LF.
+
 ## Relationship to Names
 
 The per-bank names files provide the label names that both part notes and comments reference:
@@ -623,81 +625,10 @@ When renaming a block, part, or code piece, **all references to the old name mus
 3. Find-and-replace the old name inside the **text content** of all `notes/` JSON files
 4. Run `npm run extract` to verify
 
-**Bulk rename verification script:**
+**Orphan detection and old names in note text: use the tools, not scripts.**
 
-After any batch of renames, run this check to detect orphaned note keys:
-
-```python
-import json, os, re
-
-with open('db-us/blocks.json', encoding='utf-8') as f:
-    blocks_data = json.load(f)
-names = {}
-for fname in sorted(os.listdir('db-us/names')):
-    if fname.endswith('.json'):
-        with open(f'db-us/names/{fname}', encoding='utf-8') as f:
-            names.update(json.load(f))
-
-# Collect all valid block names, part names, and named code labels
-block_names = set()
-part_names_by_block = {}  # block_name -> set of part names
-name_values = set(names.values())
-
-for category, cat_data in blocks_data.items():
-    if isinstance(cat_data, dict):
-        for bname, bdata in cat_data.items():
-            if isinstance(bdata, dict):
-                block_names.add(bname)
-                if 'parts' in bdata and isinstance(bdata['parts'], dict):
-                    part_names_by_block[bname] = set(bdata['parts'].keys())
-
-# Check block notes
-for fname in sorted(os.listdir('notes/blockNotes')):
-    if not fname.endswith('.json'): continue
-    with open(f'notes/blockNotes/{fname}', encoding='utf-8') as f:
-        for key in json.load(f):
-            if key not in block_names:
-                print(f'ORPHANED blockNote: {fname}: "{key}"')
-
-# Check part notes
-for fname in sorted(os.listdir('notes/partNotes')):
-    if not fname.endswith('.json'): continue
-    with open(f'notes/partNotes/{fname}', encoding='utf-8') as f:
-        for key in json.load(f):
-            if key in block_names: continue  # Valid block-level part note
-            if key in name_values: continue  # Valid named code piece
-            if any(key in parts for parts in part_names_by_block.values()):
-                continue  # Valid part name
-            print(f'ORPHANED partNote: {fname}: "{key}"')
-```
-
-**Stale text reference detection:**
-
-Old names can also appear inside note *text content* (e.g., a block note that says "calls func_08D7EA"). After renames, scan for stale references:
-
-```python
-# Build old-name -> new-name mapping from db-us/names/
-old_to_new = {}
-for addr, name in names.items():
-    hex_addr = format(int(addr), '06X')
-    for prefix in ['code_', 'func_', 'sub_', 'binary_', 'loc_',
-                    'actor_', 'e_actor_', 'dialogstring_']:
-        old_label = f'{prefix}{hex_addr}'
-        if old_label != name:
-            old_to_new[old_label] = name
-
-# Scan all note files for stale references
-for note_dir in ['notes/partNotes', 'notes/blockNotes', 'notes/comments']:
-    for fname in sorted(os.listdir(note_dir)):
-        if not fname.endswith('.json'): continue
-        with open(f'{note_dir}/{fname}', encoding='utf-8') as f:
-            content = f.read()
-        for old_label, new_name in old_to_new.items():
-            if old_label in content:
-                print(f'STALE REF: {note_dir}/{fname}: {old_label} -> {new_name}')
-```
-
-⚠ **When replacing old names in text content**, beware of substring matches. If `actor_0BC9BD` is replaced with `sFC_title_start_poll`, but the text already contains `sFC_title_start_poll`, you'll get the double-prefix `sFC_sFC_actor_0BC9BD`. Use word-boundary-aware replacement or check for existing prefixes before replacing.
+- Orphaned note keys (a block note with no file, a part note with no label, a comment whose `{address}` tag is gone, a key in two bank files, a key in the wrong bank file) are found by `npm run merge -- --check` on a tagged tree (see [Notes check and prune](#notes-check-and-prune-merge---check-merge---prune)). Run it after every batch of renames and re-keys. For a part-note key of the form `<prefix>_<6 hex digits>` that no label prints, the check says which name `db-us/names/` maps that address to.
+- Old names inside note **text** (a block note that says "calls func_08D7EA") are rewritten by `npm run names` itself (it moves the part-note key and rewrites references in notes, db files and docs, matching whole identifiers so `sFC_title_start_poll` is never turned into `sFC_sFC_title_start_poll`). See [Names Merge](#implemented-names-merge-npm-run-names). Do not write a script to scan or replace them.
 
 ### Naming conventions
 
@@ -1300,11 +1231,12 @@ Key order and formatting (sorted keys, 4-space indent) are done by the save help
 
 **Validation (all checked before any write; one error aborts everything):**
 
-- File must be an `.asm` under `extracted/`; `MenuSelectionHandler.asm` is refused (transforms artifact).
+- File must be an `.asm` under `extracted/`. (`MenuSelectionHandler.asm` is accepted like any other file: its three `transforms.json` patterns are anchored to the instruction line start, so no note or comment can be rewritten by them.)
 - Part-note labels must exist exactly once in the file (near-misses print "Did you mean ..."). Top-level parts and indented sub-labels are both accepted.
-- Comment addresses must have exactly one `; {address}` tag; a file without tags tells you to run `extract:lt`. The `expect` guard must match the instruction on that line. Exception: a stored comment can be replaced or removed without a tag when `expectOld` matches its current text (see the spec format).
+- Comment addresses must have exactly one `; {address}` tag; a file without tags tells you to run `extract:lt`. The `expect` guard must match the instruction on that line. A line that already has a comment is tagged too (`; {n} existing text`), so it is edited with `expect` like any other. Exception: a stored comment whose address has no tag in the file (an orphan) can be replaced or removed when `expectOld` matches its current text (see the spec format).
 - Comment text must be one line, must not contain `{digits}`, and warns when longer than 160 characters or when it matches a `db-us/transforms.json` pattern.
 - Two entries in one spec may not set the same key.
+- The transform guard (see [Transform guard](#transform-guard)): a part note on a label that a multi-line `transforms.json` key names, a comment on a line a multi-line rule would stop matching, and note or comment text that contains a literal a single-line rule rewrites are errors. A part note written for the new name of a rename rule is stored under the old name (warning).
 - Warning: a part note whose label already lives in a different bank than the file resolves to is written to the existing bank.
 
 **After writing:** `merge` reloads `notes/` from disk and confirms every set is present with the exact text, every removal is gone, and no key exists in more than one bank file.
@@ -1313,12 +1245,44 @@ Key order and formatting (sorted keys, 4-space indent) are done by the save help
 
 - Run `extract:lt` first, and again whenever labels or addresses may have changed (renames, new names, notes merged by someone else). Specs are validated against the extracted `.asm`, so a stale extract rejects a renamed label.
 - `extracted/` is **stale after a merge** until the next extract. Do not copy text out of it into another spec without re-extracting.
-- `extract` and `extract:lt` begin by deleting `extracted/*`; nothing is lost because the notes live in `notes/`.
+- `extract` and `extract:lt` overwrite every file they write and then remove the files a run did not write (see [Extraction hygiene](#extraction-hygiene-stale-sweep-and-completeness-marker)); nothing is lost because the notes live in `notes/`.
 - Keep the specs under `plans/extracted-audit/edits/` as the replayable record, one new file per iteration (see "Write new files" below).
 - Names (`db-us/names/bankNN.json`), `blocks.json`, `overrides.json`, `transforms.json` and code changes are outside its scope. Rename a label with [`npm run names`](#implemented-names-merge-npm-run-names) (it also moves the part-note key), re-run `extract:lt`, then merge any further notes for the new name.
-- **Transforms that match across labels (adjacency hazard).** A `transforms.json` regex that spans two labels (for example `diary_menu_window_dma`, which needs `diary_band_empty` and `diary_band_slot1` back to back) only matches while nothing sits between them. A part note or comment on either label puts a comment line between them, the regex stops matching, and the ROM bytes change (the rebuild CRC gate fails). Do not annotate between such labels; put the text in the block note. Prefer rules that match one label or one instruction sequence. After a merge run `npm run rebuild` and compare `artifacts/crc.json` with the baseline.
+- **Transforms that match across labels (adjacency hazard).** A `transforms.json` regex that spans two labels (for example `diary_menu_window_dma`, which needs `diary_band_empty` and `diary_band_slot1` back to back) only matches while nothing sits between them. A part note or comment on either label puts a comment line between them, the regex stops matching, and the ROM bytes change (the rebuild CRC gate fails). Do not annotate between such labels; put the text in the block note. Prefer rules that match one label or one instruction sequence. `merge` now refuses a part note on such a label (the [transform guard](#transform-guard)). After a merge run `npm run rebuild` and compare `artifacts/crc.json` with the baseline.
 
-**Availability:** implemented in `gaia-iog-baserom` (`src/merge.ts`). It imports shared helpers from `src/notes-common.ts` (bank detection, JSON load/save, spec types and note normalisation), so copy those two files and the `merge` case in `src/index.ts` to another baserom repo to use it there.
+**Availability:** implemented in `gaia-iog-baserom` (`src/merge.ts`, `src/merge-check.ts`, `src/transform-guard.ts`). They import shared helpers from `src/notes-common.ts` (bank detection, JSON load/save, spec types and note normalisation) and `src/extract-state.ts` (the extraction marker), so copy those files and the `merge` case in `src/index.ts` to another baserom repo to use it there. Tests: `npm test` (`test/*.test.ts`, fixture project `test/fixtures/mini`).
+
+### Notes check and prune (`merge --check`, `merge --prune`)
+
+```bash
+npm run extract:lt                                  # the check needs the line-tracked tree
+npm run merge -- --check [--bank NN]                # read-only audit of notes/; exit 1 on any error, 0 with warnings only
+npm run merge -- --prune <orphans.json> [--dry-run] # remove listed orphans (or one copy of a duplicated key); nothing else
+```
+
+`--check` refuses to run (exit 1) with `extracted/ has no address tags; run npm run extract:lt` when the tree has no tags or when `.extract-state.json` says `mode: plain`, and with `extracted/ is incomplete` when the marker says `running`. `--bank NN` (or `--bank=NN`, two hex digits) limits the report to keys and files of that bank; duplicate keys are reported when one of the copies is in that bank.
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | Comment key: exactly one extracted line carries `; {key}`, and the key is in `bankFloor(key / 65536)` | error; no tag = **orphan** (the message says which `blocks.json` block, part and offset hold the address and whether the part is code or data) |
+| 2 | Part-note key: a top-level label or sub-label of an extracted file, or the old name of a transform rename rule whose new name is printed | error = **orphan**; for `<prefix>_<6 hex digits>` the message adds `names maps <address> to '<name>'` |
+| 3 | Block-note key: an extracted file that is also a block in `blocks.json` / `files.json`, stored in the bank of the block's start | no file = **orphan**; wrong bank = error |
+| 4 | A key lives in one bank file per kind | error with `bankNN.json:<line>` of every copy |
+| 5 | Bank rules per extracted file: `?BANK` equals the bank of the block in `blocks.json` / `files.json`; a file with neither is warned about with the strategy that guessed its bank | error / warning |
+| 6 | The transform guard on the stored notes | error (literals a rule rewrites, part notes on label-spanning rules, comments that block a multi-line rule), warning (a multi-line rule that matches the plain text but not the tagged text) |
+
+**`--prune` file shape:** `{ "comments": ["47052"], "partNotes": ["loc_03B928"], "blockNotes": ["cop_handlers_flags", "bank13:CreditPositionLookup"] }`. A key the check does not list as an orphan is refused (it is a live note), unless it is one copy of a duplicated key and another copy stays; a duplicated key must be written `bankNN:key` to name the copy. All keys are checked first: one refusal writes nothing. After the write the tool reloads `notes/`, confirms the keys are gone and every other key is unchanged, and prints the check summary again. Facts an orphan still carries must be moved with a normal `merge` spec **before** it is pruned; prune never changes text. Always `--dry-run` first.
+
+### Transform guard
+
+`db-us/transforms.json` rewrites the generated text of a block with regular expressions, and the block notes, part notes and comments are inside that text when the rules run. A note can therefore stop a rule from matching (the ROM changes) or be rewritten by it. `merge` (before it writes) and `merge --check` (for the stored notes) look for four cases, per block (block name = file name without `.asm` / `.sprite`; keys of blocks that are not in `blocks.json` / `files.json` are ignored):
+
+1. **Comment on a line inside a multi-line rule.** A rule is multi-line when its key contains `\s`, `\r`, `\n` or a line break. The tool matches the key against the file with every `;` tail removed (what the plain build sees without comments), then simulates the comment (`instr ; text` plain, `instr ; {n} text` tagged) and refuses it when the rule matches fewer sites afterwards. A comment after the last character of the match does not stop the rule and is accepted.
+2. **Part note on a label a multi-line key names with definition syntax** (`diary_band_slot1\s\[`): a note line between the labels stops the match or is moved by it. Removing a note is allowed.
+3. **Rename rules** (key and value are plain identifiers, `sub_0B9CE8` to `sub2_0B9CE8`): the extracted file prints the new name, the engine looks the note up under the old one. A part note written for the new name is stored under the old name; `--check` accepts the old name as long as the new label is printed.
+4. **Literal rewrites** (a plain-text key whose value differs, e.g. `combat_collision` rewrites every `$8000` to `$0080`): note, part-note and comment text of the block that contains the literal is refused, because the rule rewrites it too. Write the value the build produces.
+
+**Limit.** The tool reads the extracted `.asm`, which is the text *after* the rules ran. A rule that fired is gone from it, so the guard cannot measure it; it has work only for rules that did not fire (not tolerant of a comment or a tag, or unused) and for the cases above that do not depend on the text. Make a rule tolerant of the `; {n}` tail or a comment (see the tolerant rules in `db-us/transforms.json`) instead of relying on the guard, and gate every notes change with `extract:lt` + `rebuild` against `artifacts/crc.json`.
 
 ### Merge spec format and iteration files
 
@@ -1350,7 +1314,7 @@ Key order and formatting (sorted keys, 4-space indent) are done by the save help
 - **string or array** = set (add or replace). In note text, `\n` ends a line and an empty line becomes a `; ` paragraph break. An array is joined with `\n`.
 - **`null` or `""`** = remove. Removing something that is already absent is a no-op.
 - **`expect`** is an optional guard on comments: the instruction on that tagged line must contain the string (case-insensitive), otherwise the run fails. Use it whenever the address came from memory or an earlier pass.
-- **`expectOld`** replaces or removes a comment on a line that **already has a comment**. `extract:lt` prints no `; {address}` tag on such a line, so the line cannot be located in the `.asm`; instead the address is the key of the stored comment in `notes/comments/bankNN.json` and `expectOld` must be a substring (case-insensitive) of that stored text, otherwise the run fails. Find the key by searching `notes/comments/` for the old text (read-only). `expectOld` on a tagged (uncommented) line is an error, and `expect` is ignored (with a warning) on a commented line, because the instruction cannot be checked there. A comment that cannot be matched either way still fails with "address tag not found".
+- **`expectOld`** replaces or removes a stored comment whose address has **no tag** in the file (an orphan: the address no longer starts an instruction). The address is the key of the stored comment in `notes/comments/bankNN.json` and `expectOld` must be a substring (case-insensitive) of that stored text, otherwise the run fails. Find the key by searching `notes/comments/` for the old text (read-only). To edit a comment on a live line, use `expect`: `extract:lt` prints `; {address} <comment>` on a commented line as well, so the line is located by its tag and `expectOld` on a tagged line is an error. An address that has neither a tag nor a stored comment fails with "address tag not found".
 - Keys starting with `_` or `$` at the top level are ignored (use `"_note"` for annotations in the spec).
 - Re-applying the same spec is safe: identical content reports `unchanged`.
 
@@ -1383,8 +1347,25 @@ plans/extracted-audit/
 **Rules of thumb:**
 
 - Work from a fresh `extract:lt`: comment addresses and labels come from that output. If you extracted with different notes since, re-extract before writing the spec.
-- `npm run extract` and `extract:lt` begin by deleting `extracted/*`. `merge` writes to `notes/`, so nothing is lost. Any hand edit to `extracted/*.asm` is lost at the next extraction.
-- Record the rebuild CRC baseline in the **same extraction mode** you gate with. In `gaia-iog-baserom`, `extract:lt` then `rebuild` and plain `extract` then `rebuild` currently produce different `totalSize` values (3062204 vs 3062189 at the time of writing), so comparing across modes looks like a regression when it is not one.
+- `npm run extract` and `extract:lt` overwrite `extracted/*` (and sweep files they did not write). `merge` writes to `notes/`, so nothing is lost. Any hand edit to `extracted/*.asm` is lost at the next extraction.
+- Record the rebuild CRC baseline in the extraction mode you gate with, and say which mode it is. In `gaia-iog-baserom` the tagged (`extract:lt`) and plain (`extract`) builds are identical: both give checksum 222965960, crc -34152415, totalSize 3062205 and the same SHA-1 (measured after the tolerant rules in `db-us/transforms.json` landed), so a difference between the two modes is a regression, not an artefact of the mode.
+
+### Extraction hygiene: stale sweep and completeness marker
+
+Implemented in `gaia-iog-baserom` (`src/extract-state.ts`, called from `extract()` / `extractJP()` and `rebuild()` / `rebuildJp()` in `src/index.ts`).
+
+`npm run extract`, `extract:lt` and `extract-jp` no longer delete the output folder first. The old `rm -rf extracted/* && ...` failed with "Device or resource busy" whenever a process held a directory open, deleted part of the tree and skipped the extraction. Instead:
+
+1. `extracted/.extract-state.json` is written with `{ "status": "running", "mode": "tagged" | "plain", "startedAt": ... }` before the first file.
+2. The extractor writes every file it owns (it overwrites unconditionally: `saveFileAsText` / `saveFileAsBinary` in `DbRootUtils.extractAllContent`).
+3. Every file whose modification time is before the start of the run was not written by it (a block that no longer exists, a renamed file) and is removed with retries. Empty directories stay. The run prints `stale files removed: N` and the first 20 paths. A run that wrote no file refuses to sweep.
+4. The marker becomes `{ "status": "complete", "mode": ..., "startedAt": ..., "files": N, "finishedAt": ... }`.
+
+`npm run rebuild` (and `rebuild-jp`) reads the marker first. `running` stops the build with `extracted/ is incomplete (.extract-state.json says 'running'); run npm run extract:lt` (an interrupted or still running extraction leaves `running`); a missing marker (a tree from before the marker existed) only prints a warning. `artifacts/crc.json` carries `mode`, detected from the extracted text (`tagged` when `; {n}` tags are present).
+
+The marker starts with a dot: `listDirectory` (`gaia-core/src/utils/file.ts`) gives such a name no extension and `applyFolder` (`gaia-core/src/database/root.ts`) skips entries without one, so the marker never reaches the ROM build. `merge`, `names` and `flags inventory` read only `.asm` files. The marker holds timestamps: keep it out of commits (it is an untracked file in the baserom unless `.gitignore` lists it).
+
+`rebuild-jp` now calls `rebuildJp` (it called the US `rebuild` before). The JP paths could not be run without the JP inputs.
 
 ### Bank detection
 

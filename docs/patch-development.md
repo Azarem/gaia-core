@@ -254,6 +254,14 @@ Label# { ... }          ;          Label.at { ... }          (offset 0)
 
 Verbs are case-insensitive and must be the text after the **last `.`** of the label (`Label.at(1F)` is the only verb that takes an argument, and it is hex). Both forms work with the colon one-liner style (`Label+=: entry < ... >`, `Label.append: entry < ... >`).
 
+**Optional `block.` prefix (cosmetic):** an override label may be written as `block_name.part_name<suffix>` to show which extracted file the part lives in. The parser removes everything up to the first `.` before lookup, so only the part name is matched, and the prefix is **not validated** (a wrong block name still matches). It works with every symbol and verb form; plain (non-override) labels are not affected.
+
+```asm
+dm44_cell_door.code_05D54B-= { ... }       ; same as  code_05D54B-= { ... }
+dm44_cell_door.code_05D552.append { ... }  ; same as  code_05D552.append { ... }
+dm44_cell_door.code_05D560.at(1F) { ... }  ; same as  code_05D560.at(1F) { ... }
+```
+
 **All override suffixes require a match.** There are no silent rewrites — if an override label does not match any existing part in the codebase, the build fails with an error.
 
 **Warning for `+` / `-` on delimited blocks:** splicing a part after a block that ends with a delimiter (e.g. a `]`-terminated struct list) puts your entries *after the list terminator*, which is almost never intended. The build prints a warning suggesting `+=` / `-=` when this happens.
@@ -808,7 +816,7 @@ run_button_end:
 --------------------------------------
 
 ; Rewrite an existing label to hook in the new button mapping
-loc_0BE695! {
+ApplySoundAndRemap_ButtonTypeSelect! {
     LDA #$0040
     STA $0DB0
     ; ... modified button configuration ...
@@ -817,7 +825,7 @@ loc_0BE695! {
 
 - `?BANK 03` constrains the topmost code (`run_button_main`) to bank 3
 - The `:` suffix on `run_button_main:` creates the label inline
-- `loc_0BE695!` rewrites an existing function in the extracted code
+- `ApplySoundAndRemap_ButtonTypeSelect!` rewrites an existing function in the extracted code
 - Dashed lines (`------`) are visual separators — treated as comments
 
 ---
@@ -1353,7 +1361,7 @@ IOG uses an **action flag remap system** that converts physical SNES button pres
 
 **Action flag layout in `joypadCurrent` ($0656):**
 
-| Bit | Mask | Action | Default Physical Button |
+| Bit | Mask | Action | Physical button (Illusion of Gaia baserom) |
 |-----|------|--------|------------------------|
 | 15 | `$8000` | ACTION_CONFIRM | A |
 | 14 | `$4000` | ACTION_CANCEL | B |
@@ -1368,22 +1376,22 @@ IOG uses an **action flag remap system** that converts physical SNES button pres
 | 2 | `$0004` | ACTION_CYCLE_ITEM | X |
 | 1–0 | `$0002/$0001` | Reserved | — |
 
-**Rule:** Always test action flags against `joypadCurrent`/`joypadHeld`, never raw hardware buttons. Game code checks for action flags like `#$0080` (confirm), `#$0020` (cancel), `#$8000` (attack), etc.
+**Rule:** Always test action flags against `joypadCurrent`/`joypadHeld`, never raw hardware buttons. Game code checks for action flags like `#$8000` (confirm / interact), `#$4000` (cancel), `#$0080` (attack), `#$0008` (use item), `#$0040` (run), `#$0004` (cycle item). Physical A feeds both `$8000` and `$0080` (`$8080`) and physical B feeds both `$4000` and `$0008` (`$4008`), so a test for a single bit fires from the same button as its partner bit.
 
 The remap pipeline is defined in `baserom/patches/InputRemap.patch.asm`. The button mask constants in extracted code are set by `transforms.json` during extraction (see [Transforms vs Overrides](#transforms-vs-overrides) below).
 
-**Remap variable → physical button mapping** (variable names are historical — do not match physical buttons):
+**Remap variable → physical button mapping.** Each variable holds the logical mask that its physical button produces; `VBlankWaitAndJoypad` ORs it into the remapped pad word when the button is pressed and the variable is nonzero.
 
-| Variable | Address | Physical Button |
-|----------|---------|----------------|
-| `remapR` | `$0DA6` | R |
-| `remapL` | `$0DA8` | L |
-| `remapB` | `$0DAA` | B |
-| `remapA` | `$0DAC` | A |
-| `remapY` | `$0DAE` | Y |
-| `remapX` | `$0DB0` | X |
-| `remapStart` | `$0DB2` | Start (passthrough) |
-| `remapSelect` | `$0DB4` | Select (passthrough) |
+| Variable | Address | Physical button (hardware bit) | Logical mask in this baserom |
+|----------|---------|-------------------------------|------------------------------|
+| `remapR` | `$0DA6` | R (`$0010`) | `$0010` |
+| `remapL` | `$0DA8` | L (`$0020`) | `$0020` |
+| `remapB` | `$0DAA` | B (`$8000`) | `$4008` |
+| `remapA` | `$0DAC` | A (`$0080`) | `$8080` |
+| `remapY` | `$0DAE` | Y (`$4000`) | `$0040` |
+| `remapX` | `$0DB0` | X (`$0040`) | `$0004` |
+| `remapStart` | `$0DB2` | Start (`$1000`) | `$1000` |
+| `remapSelect` | `$0DB4` | Select (`$2000`) | `$2000` |
 
 ### Input Consumption Pattern
 

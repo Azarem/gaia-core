@@ -28,6 +28,10 @@ export class AssemblerState {
     this.root = context.root;
     this.openTag = openTag;
 
+    // A struct member typed `name[@N]` (item count taken from member N, see TypeParser.parseType)
+    // is assembled from whatever `name` rows the text carries, so the count suffix is dropped here.
+    structType = structType?.replace(/\[@\d+\]$/, '');
+
     if (structType) {
       const cleanedType = structType.replaceAll('-', '_').replaceAll(' ', '_').toLowerCase();
       this.dbStruct = this.root.structs[cleanedType];

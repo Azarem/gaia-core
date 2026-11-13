@@ -1361,7 +1361,7 @@ String type names from `stringTypes.json` are used directly as type values anywh
 "505338": "DialogString"
 
 // Pointer types to strings
-"table_08EB8F": { "start": 584591, "end": 584659, "type": "&DialogString" }
+"AbilityNameTable": { "start": 584591, "end": 584659, "type": "&DialogString" }
 
 // In struct fields (structs.json)
 "diary-entry": { "types": [ "DialogString", "Binary" ] }
@@ -1883,7 +1883,7 @@ When declaring parts in `blocks.json` or types in `types.json`, pointer types in
 IOG example — a table of pointers to dialogue strings:
 
 ```json
-"table_08EB8F": { "start": 584591, "end": 584659, "type": "&DialogString" }
+"AbilityNameTable": { "start": 584591, "end": 584659, "type": "&DialogString" }
 ```
 
 This tells the engine: "starting at address 584591, read 2-byte pointers until address 584659. Each pointer references a DialogString."

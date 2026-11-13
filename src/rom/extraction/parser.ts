@@ -37,7 +37,15 @@ export class TypeParser {
     this._stringTypes = blockReader._root.stringTypes;
   }
 
-  public parseType(typeName: string, reg: Registers | null, depth: number, bank?: number, single?: boolean): unknown {
+  /**
+   * Parses one type from the ROM at the current position.
+   *
+   * `maxItems` bounds the number of objects the item loop produces. It is set by the struct member
+   * notation `name[@N]`, where N is the (decimal) index of an earlier Byte member of the same struct
+   * that holds the item count (the sprite-group header's 13th byte is the sub-sprite count).
+   * `maxItems === 0` returns an empty list.
+   */
+  public parseType(typeName: string, reg: Registers | null, depth: number, bank?: number, single?: boolean, maxItems?: number): unknown {
     
     const objects: unknown[] = [];
     const arrayIx = typeName.indexOf('[');
@@ -107,6 +115,8 @@ export class TypeParser {
       throw new Error(`Unknown type: ${fixedTypeName}`);
     }
 
+    if (maxItems === 0) return objects;
+
     const delimiter = parentType.delimiter;
     const discOffset = parentType.discriminator;
     const discLogic = parentType.discriminatorLogic ?? '=';
@@ -169,7 +179,18 @@ export class TypeParser {
           for (let i = 0; i < memberCount; i++) {
             //const transform = this._blockReader._transformProcessor.getTransform();
             //if(transform !== null) debugger;
-            parts[i] = this.parseType(types[i], reg, depth + 1, bank, false);
+            const countedMember = /^(.+)\[@(\d+)\]$/.exec(types[i]);
+            if (countedMember) {
+              // name[@N]: the item count is the value of the earlier member N of this struct
+              const countIx = parseInt(countedMember[2], 10);
+              const countPart = countIx < i ? parts[countIx] : undefined;
+              if (!(countPart instanceof Byte)) {
+                throw new Error(`Member ${i} of ${targetType.name}: ${types[i]} must name an earlier Byte member`);
+              }
+              parts[i] = this.parseType(countedMember[1], reg, depth + 1, bank, false, countPart.value);
+            } else {
+              parts[i] = this.parseType(types[i], reg, depth + 1, bank, false);
+            }
             //this._blockReader._transformProcessor.applyTransform(transform, i, parts);
           }
 
@@ -208,6 +229,7 @@ export class TypeParser {
       if (!this._blockReader.partCanContinue()) break;
       if (nullValue !== undefined) break;
       if(single) break;
+      if (maxItems !== undefined && objects.length >= maxItems) break;
     }
 
     // If we have reached delimiter and at depth 0, note the struct
