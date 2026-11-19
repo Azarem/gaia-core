@@ -131,7 +131,7 @@ export class RomWriter {
           } else if(typeof value === 'number') {
             location = value;
           }
-          value = location;
+          value = Address.fromLocation(location, this.root.config.memoryMode, this.root.config.cpuMode).toInt();
 
         case 'word':
           buf[pos] = value & 0xFF;
@@ -519,7 +519,7 @@ export class RomWriter {
             switch (type) {
               case AddressType.Offset:
 
-                if ((parentOp?.mnem === 'JSR' || parentOp?.mnem === 'JMP' || parentOp?.mnem === 'COP') && (block.location & 0x3F0000) !== (loc & 0x3F0000)) {
+                if ((parentOp?.mnem === 'JSR' || parentOp?.mnem === 'JMP' || parentOp?.mnem === 'COP') && (block.location & 0x3F8000) !== (target?.location & 0x3F8000)) {
                   console.log(`Cross bank call detected in ${block.label}: '${parentOp?.mnem} ${label}' (${loc.toString(16).toUpperCase()})`);
                 }
 
